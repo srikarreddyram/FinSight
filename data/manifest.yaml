@@ -1,0 +1,66 @@
+# Hand-curated manifest. Generated manifests (manifest.financebench.yaml, manifest.edgar.yaml,
+# manifest.india.yaml) are merged with this one; entries here win on conflicts, so this is the place
+# for display names, aliases and fiscal-year conventions.
+#
+# Fiscal-year convention: fiscal_year is the calendar year in which the fiscal year ENDS.
+#   Infosys FY26 = Apr 2025 - Mar 2026 -> fiscal_year: 2026, fiscal_year_end_month: 3
+#
+# India demo track. The SEC-registered companies below are fetched automatically as 20-F annual reports:
+#   uv run python -m ingest.fetch_edgar INFY HDB IBN WIT RDY MMYT --forms 20-F --years 3 --track india
+# Indian-format annual reports and earnings-call transcripts sit behind bot protection on IR sites, so
+# download those PDFs by hand into data/filings/<TICKER>/ and add them under `documents:` like the
+# commented example at the bottom.
+
+companies:
+  - ticker: INFY
+    name: Infosys
+    country: IN
+    fiscal_year_end_month: 3
+    aliases: [Infosys Limited, Infosys Ltd]
+  - ticker: HDB
+    name: HDFC Bank
+    country: IN
+    fiscal_year_end_month: 3
+    aliases: [HDFC Bank Limited, HDFCBANK]
+  - ticker: IBN
+    name: ICICI Bank
+    country: IN
+    fiscal_year_end_month: 3
+    aliases: [ICICI Bank Limited, ICICIBANK]
+  - ticker: WIT
+    name: Wipro
+    country: IN
+    fiscal_year_end_month: 3
+    aliases: [Wipro Limited]
+  - ticker: RDY
+    name: Dr. Reddy's
+    country: IN
+    fiscal_year_end_month: 3
+    aliases: [Dr. Reddy's Laboratories, Dr Reddys, Dr. Reddys]
+  - ticker: MMYT
+    name: MakeMyTrip
+    country: IN
+    fiscal_year_end_month: 3
+    aliases: [MakeMyTrip Limited, Make My Trip]
+  - ticker: TCS
+    name: TCS
+    country: IN
+    fiscal_year_end_month: 3
+    aliases: [Tata Consultancy Services, Tata Consultancy]
+
+documents: []
+#  - doc_id: TCS_FY2025_AR
+#    ticker: TCS
+#    doc_type: annual_report
+#    fiscal_year: 2025
+#    period: FY
+#    url: https://www.tcs.com/investor-relations   # where you downloaded it from
+#    local_path: data/filings/TCS/TCS_FY2025_AR.pdf
+#    track: india
+#  - doc_id: INFY_Q4FY2025_CALL
+#    ticker: INFY
+#    doc_type: earnings_call
+#    fiscal_year: 2025
+#    period: Q4
+#    local_path: data/filings/INFY/INFY_Q4FY2025_CALL.pdf
+#    track: india

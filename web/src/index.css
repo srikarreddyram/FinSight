@@ -1,0 +1,119 @@
+@import "tailwindcss";
+@import "./design/animations.css";
+
+/* FinSight's colour scheme: neutral paper surfaces, one teal accent, and meaning colours for
+   verified (green), computed (blue) and refused/removed (amber). Light and dark follow the OS. */
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --font-display: "Barlow Condensed", "Arial Narrow", sans-serif;
+
+  --color-paper: #f6f6f3;
+  --color-card: #ffffff;
+  --color-raised: #fbfbf9;
+  --color-ink: #16181d;
+  --color-dim: #3d424c;
+  --color-muted: #5f6470;
+  --color-line: #e4e4de;
+  --color-edge: #0f766e26;
+  --color-hover: #0f766e12;
+  --color-accent: #0f766e;
+  --color-accent-soft: #ccfbf1;
+  --color-on-accent: #ffffff;
+  --color-verified: #047857;
+  --color-verified-soft: #d1fae5;
+  --color-computed: #1d4ed8;
+  --color-computed-soft: #dbeafe;
+  --color-warn: #b45309;
+  --color-warn-soft: #fef3c7;
+  --color-red: #b91c1c;
+  --color-tier-good: #4d7c0f;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-paper: #0f1115;
+    --color-card: #171a20;
+    --color-raised: #1d2128;
+    --color-ink: #e8e9ec;
+    --color-dim: #c3c7cf;
+    --color-muted: #9aa0ab;
+    --color-line: #2a2e36;
+    --color-edge: #2dd4bf2e;
+    --color-hover: #2dd4bf14;
+    --color-accent: #2dd4bf;
+    --color-accent-soft: #123a37;
+    --color-on-accent: #042f2e;
+    --color-verified: #34d399;
+    --color-verified-soft: #0f3326;
+    --color-computed: #93c5fd;
+    --color-computed-soft: #172a4a;
+    --color-warn: #fbbf24;
+    --color-warn-soft: #3a2a0c;
+    --color-red: #f87171;
+    --color-tier-good: #a3e635;
+  }
+}
+
+html,
+body {
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Answer prose rendered from Markdown. */
+.answer p {
+  margin: 0 0 0.75rem;
+  line-height: 1.7;
+}
+.answer ul,
+.answer ol {
+  margin: 0 0 0.75rem 1.25rem;
+  line-height: 1.7;
+}
+.answer ul {
+  list-style: disc;
+}
+.answer ol {
+  list-style: decimal;
+}
+.answer table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.8125rem;
+  margin: 0.25rem 0 0.75rem;
+}
+.answer th,
+.answer td {
+  border-bottom: 1px solid var(--color-line);
+  padding: 0.5rem 0.625rem;
+  text-align: left;
+}
+.answer th {
+  color: var(--color-muted);
+  font-weight: 500;
+  font-size: 0.6875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+}
+.answer td:not(:first-child),
+.answer th:not(:first-child) {
+  text-align: right;
+}
+
+/* Real :hover is available here (unlike Shot Vision's inline-style components), so primitives use it. */
+.hover-lift {
+  transition: background-color 200ms, border-color 200ms, opacity 200ms;
+}
+.hover-lift:hover {
+  background: var(--color-hover);
+  border-color: var(--color-accent);
+}

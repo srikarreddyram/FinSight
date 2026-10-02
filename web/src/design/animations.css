@@ -1,0 +1,59 @@
+/* The whole animation catalog, declared once (Shot Vision rule: never redeclare a keyframe per component). */
+
+/* Word-by-word drop-in for hero headlines; stagger per word with animation-delay. */
+@keyframes wordDrop {
+  from { opacity: 0; transform: translateY(-36px); filter: blur(5px); }
+  to { opacity: 1; transform: translateY(0); filter: blur(0); }
+}
+
+/* Generic "this block just entered": answer cards, result panels. */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* A headline number landing with a slight overshoot; pair with the spring easing below. */
+@keyframes statPop {
+  from { opacity: 0; transform: scale(0.85) translateY(12px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+/* "Still working" heartbeat in the current accent. */
+@keyframes accentPulse {
+  0%, 100% { box-shadow: 0 0 20px var(--color-edge); }
+  50% { box-shadow: 0 0 44px var(--color-edge); }
+}
+
+/* "Scroll for more" affordance. */
+@keyframes scrollNudge {
+  0%, 100% { opacity: 0.3; transform: scaleY(0.8); }
+  50% { opacity: 1; transform: scaleY(1.1); }
+}
+
+/* Bars growing from zero on first render. */
+@keyframes barFill { from { width: 0; } }
+
+/* Slow breathe for background decoration. */
+@keyframes ambientPulse { 0%, 100% { opacity: 0.4; } 50% { opacity: 0.9; } }
+
+/* Radar ping on the one thing the eye should land on. */
+@keyframes pulseRing {
+  0%, 100% { opacity: 1; transform: translate(-50%, -50%) scale(1); box-shadow: 0 0 8px currentColor; }
+  50% { opacity: 0; transform: translate(-50%, -50%) scale(1.6); box-shadow: 0 0 24px currentColor; }
+}
+
+/* Skeleton shimmer for page previews. */
+@keyframes shimmer { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }
+
+:root {
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.anim-fade-up { animation: fadeUp 420ms ease both; }
+.anim-stat-pop { animation: statPop 520ms var(--ease-spring) both; }
+.anim-word { display: inline-block; animation: wordDrop 700ms ease both; }
+.anim-bar { animation: barFill 900ms ease both; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 1ms !important; animation-delay: 0ms !important; transition-duration: 1ms !important; }
+}

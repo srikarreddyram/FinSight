@@ -1,0 +1,50 @@
+# Questions the indexed filings cannot answer. The correct behaviour is "Not found in the filings".
+# They target companies and years that ARE in the FinanceBench corpus, so retrieval returns plausible
+# but insufficient passages: the hard case for refusals. Each one asks for something filings don't
+# disclose (future values, prices, granular breakdowns, private details) rather than nonsense.
+questions:
+  - id: unans_01
+    question: What revenue does 3M forecast for fiscal year 2030?
+    tickers: [MMM]
+  - id: unans_02
+    question: What was 3M's closing share price on March 15, 2019?
+    tickers: [MMM]
+  - id: unans_03
+    question: How many employees did Amazon have in Chile at the end of FY2019?
+    tickers: [AMZN]
+  - id: unans_04
+    question: What was Netflix's subscriber churn rate in Brazil in FY2017?
+    tickers: [NFLX]
+  - id: unans_05
+    question: What was Boeing's net income for FY2030?
+    tickers: [BA]
+  - id: unans_06
+    question: How much did Walmart spend on employee cafeteria meals in FY2020?
+    tickers: [WMT]
+  - id: unans_07
+    question: What was Microsoft's FY2023 revenue from Xbox console sales in Japan?
+    tickers: [MSFT]
+  - id: unans_08
+    question: What was Coca-Cola's FY2022 revenue from Sprite in Germany?
+    tickers: [KO]
+  - id: unans_09
+    question: What was Best Buy's same-store sales growth in Canada for the month of July 2022?
+    tickers: [BBY]
+  - id: unans_10
+    question: What bonus did Nike pay its head of the Jordan brand design team in FY2023?
+    tickers: [NKE]
+  - id: unans_11
+    question: What price per share did JPMorgan pay in a planned acquisition of a European bank announced in FY2022?
+    tickers: [JPM]
+  - id: unans_12
+    question: What was PepsiCo's market share of potato chips in India in FY2022?
+    tickers: [PEP]
+  - id: unans_13
+    question: What was Adobe's FY2017 revenue from the government of Brazil?
+    tickers: [ADBE]
+  - id: unans_14
+    question: What is Verizon's planned dividend per share for fiscal year 2028?
+    tickers: [VZ]
+  - id: unans_15
+    question: How many Ulta Beauty stores had a franchise owner in FY2023?
+    tickers: [ULTA]

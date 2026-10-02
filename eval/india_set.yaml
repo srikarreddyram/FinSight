@@ -1,0 +1,63 @@
+# India custom set: 40 questions on the demo companies (target from the PRD).
+#
+# Write each gold answer from the filing itself and record the evidence page (1-indexed PDF page).
+# Entries with `answer: null` are skipped by eval/run.py, so this file can be filled in gradually.
+# Mix question types: single numbers, multi-year trends, "what did management say", risk summaries,
+# comparisons across two companies, and fiscal-year traps ("last year" for an April-March company).
+#
+# Format:
+#   - id: india_01
+#     question: ...
+#     answer: "..."                      # short gold answer, numbers with units
+#     tickers: [INFY]
+#     evidence:                            # optional but needed for recall@10 / citation checks
+#       - {doc_id: INFY_FY2025_20F, page: 112}
+questions:
+  - id: india_01
+    question: What was Infosys's operating margin in FY24 and FY25, and what did management say drove the change?
+    answer: null
+    tickers: [INFY]
+  - id: india_02
+    question: What was Infosys's total revenue in FY2025 in US dollars?
+    answer: null
+    tickers: [INFY]
+  - id: india_03
+    question: How many employees did Infosys have at the end of FY25?
+    answer: null
+    tickers: [INFY]
+  - id: india_04
+    question: What are the top risk factors HDFC Bank lists about asset quality?
+    answer: null
+    tickers: [HDB]
+  - id: india_05
+    question: What was HDFC Bank's gross non-performing assets ratio at the end of FY2025?
+    answer: null
+    tickers: [HDB]
+  - id: india_06
+    question: What was ICICI Bank's net interest margin in FY2024 and FY2025?
+    answer: null
+    tickers: [IBN]
+  - id: india_07
+    question: Compare Infosys and Wipro revenue growth over the last three fiscal years.
+    answer: null
+    tickers: [INFY, WIT]
+  - id: india_08
+    question: What was Wipro's attrition rate last year?
+    answer: null
+    tickers: [WIT]
+  - id: india_09
+    question: What share of Dr. Reddy's revenue came from North America in FY2025?
+    answer: null
+    tickers: [RDY]
+  - id: india_10
+    question: What did MakeMyTrip report as gross bookings for its air ticketing segment in FY2025?
+    answer: null
+    tickers: [MMYT]
+  - id: india_11
+    question: Compare HDFC Bank and ICICI Bank return on equity in FY2025.
+    answer: null
+    tickers: [HDB, IBN]
+  - id: india_12
+    question: How much did Infosys return to shareholders through dividends and buybacks in FY2024?
+    answer: null
+    tickers: [INFY]

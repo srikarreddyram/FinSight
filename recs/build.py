@@ -125,22 +125,24 @@ def return_bands(preds: pd.DataFrame) -> dict[int, dict]:
             for k in q.index}  # fmt: skip
 
 
-def score_risk(risk_panel: pd.DataFrame, months: int = 2) -> tuple[pd.DataFrame, dict]:
-    """Grades for the newest `months` months (the previous one is kept to show grade changes)."""
+def score_risk(risk_panel: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
+    """Grades for the newest months: enough of them to smooth the latest grade and to show last month's.
+    Each component is the model blended with trailing volatility at the weight validation chose, exactly as in
+    the walk-forward folds."""
     p = risk_models.prepare(risk_panel)
-    recent = sorted(p["month"].unique())[-months:]
+    recent = sorted(p["month"].unique())[-(risk_models.SMOOTH + 1) :]
     score = p[p["month"].isin(recent)].reset_index(drop=True)
     out = score[["ticker", "month"]].copy()
     info, contribs = {}, {}
     for kind, target in (("vol", "fwd_vol"), ("downside", "severe")):
         train = p.dropna(subset=[target])
-        (params, fset, variant), val = risk_models.tune(train, target, kind)
+        (params, fset, variant, weight), val = risk_models.tune(train, target, kind)
         feats = risk_models.FEATURE_SETS[fset]
         model = risk_models._fit(train, target, params, kind, feats, variant)
-        out[f"pred_{kind}"] = model.predict(score[feats])
+        out[f"pred_{kind}"] = risk_models.blend(score, model.predict(score[feats]), weight).to_numpy()
         contribs[kind] = (feats, model.predict(score[feats], pred_contrib=True)[:, :-1])
         info[kind] = {"trained_through": str(train["month"].max()), "rows": len(train), "features": fset,
-                      "target": variant, "validation": val}  # fmt: skip
+                      "target": variant, "model_weight": weight, "validation": val}  # fmt: skip
     out["grade"] = risk_models.grades(out).astype(int)
     out["vol_decile"] = decile(out["pred_vol"], out["month"])
     out["downside_decile"] = decile(out["pred_downside"], out["month"])
@@ -154,6 +156,17 @@ def score_risk(risk_panel: pd.DataFrame, months: int = 2) -> tuple[pd.DataFrame,
     lead = by_pillar.to_numpy()[np.arange(len(by_pillar)), by_pillar.abs().to_numpy().argmax(axis=1)]
     out["risk_pillar_effect"] = np.where(lead > 0, "raises risk", "lowers risk")
     out["risk_drivers"] = [drivers(score.iloc[i], feats, c[i], "raises risk", "lowers risk") for i in range(len(score))]
+    if info["downside"]["model_weight"] == 0:
+        # Validation gave the model no weight: the downside component is trailing volatility alone, so that is
+        # the only honest driver to show.
+        above = (score["vol_12m_r"] >= 0.5).to_numpy()
+        effect = np.where(above, "raises risk", "lowers risk")
+        out["risk_pillar"], out["risk_pillar_effect"] = PILLAR_LABELS["market"], effect
+        one = np.array([1.0])
+        out["risk_drivers"] = [
+            drivers(score.iloc[i], ["vol_12m_r"], one if above[i] else -one, "raises risk", "lowers risk")
+            for i in range(len(score))
+        ]
     for m in ("vol_12m", "beta"):
         out[m] = score[m].to_numpy()
     return out, info
@@ -213,7 +226,9 @@ def risk_summary(risk_preds: pd.DataFrame, latest: pd.DataFrame) -> dict:
         "by_year": json.loads(rep["by_year"].reset_index().to_json(orient="records")),
         "calibration": json.loads(rep["calibration"].reset_index().to_json(orient="records")),
         "by_sector": json.loads(rep["by_sector"].reset_index().to_json(orient="records")),
-        "grade_change_rate": float(rep["stability"].loc["monthly_grade_change_rate", "value"]),
+        "grade_change_rate": float(rep["stability"].loc[risk_models.SMOOTH, "grade_change_rate"]),
+        "smoothing_months": risk_models.SMOOTH,
+        "stability": json.loads(rep["stability"].reset_index().to_json(orient="records")),
         "distribution": json.loads(
             latest.groupby(["sector", "risk_grade"]).size().rename("n").reset_index().to_json(orient="records")
         ),

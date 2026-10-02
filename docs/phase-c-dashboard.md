@@ -18,7 +18,7 @@ Run it: `uv run python -m recs.build`, `uv run uvicorn app.api:app`, and `npm ru
 
 ## Design decisions
 
-- **Honesty in the product.** With corrected prices the return model has no proven edge, so the Watchlist, Company and Methodology pages say so directly, and the Risk page states that the models do not beat trailing volatility. Every page carries the research-and-education disclaimer.
+- **Honesty in the product.** With corrected prices the return model has no proven edge, so the Watchlist, Company and Methodology pages say so directly, and the Risk page states that the grades add little to trailing volatility, with the comparison shown. Every page carries the research-and-education disclaimer.
 - **Chart colours are validated, not picked.** A positive/negative pair and a five-step single-hue ramp for the ordered risk grades, each checked for colour-blind separation and contrast on the light and dark card surfaces. Grades always show their number and name beside the colour.
 - **Baselines in one gray.** On the backtest chart the question is whether the ranker separates from the baselines, so they share the de-emphasis colour and the table view names each one.
 

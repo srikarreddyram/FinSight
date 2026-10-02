@@ -49,31 +49,31 @@ Timeline for a panel row at month-end *t*: features use facts with `available_at
 
 > **Correction, 2 October 2026.** Results reported before this date were wrong. 71 current index members (Bank of America, Citigroup, Goldman Sachs, Berkshire Hathaway, Alphabet, Ford and others) were priced with a preferred share or note instead of their common stock, because the ticker lookup kept the last of a company's SEC tickers rather than the primary one. Fixed in `warehouse/universe.py` (`primary_tickers`, with a regression test) and everything was rebuilt. The earlier figures (ranker IC 0.028; long-short 5.0% a year, Sharpe 0.61) overstated the model. The numbers below replace them.
 
-Panel: 93,899 stock-months, about 498 members a month, 29 signals; 80.3% of rows have a 12-month target. Audited on the real panel: no row uses information dated after its month (0 of 91,961), and no target starts early.
+Panel: 94,090 stock-months, about 498 members a month, 29 signals; 80.2% of rows have a 12-month target. Audited on the real panel: no row uses information dated after its month (0 of 93,986), and no target starts early. The figures below are from the rebuild after predecessor companies were linked (see [phase-a-warehouse.md](phase-a-warehouse.md)), which raised fundamentals coverage from 97% to 99% of stock-months.
 
 **Survivorship.** 11.7% of member-months have no price history (Yahoo drops acquired and delisted names): 23% in 2010, falling to 1% by 2025. Those names drop out of that month's cross-section, so early test years lean towards survivors.
 
 **Single signals** (monthly rank IC against 12-month excess return, t-statistic on yearly means; `data/study/sp500/signals.csv`):
-- Leverage change holds up best: IC +0.044, t = 4.1 (within sector +0.039, t = 4.7, positive in 14 of 15 years). It holds outside Financials (+0.054, versus 0.000 inside) and fades when lagged a year (+0.032): a real, decaying effect, plausibly buybacks (shrinking equity raises leverage).
-- Leverage level: IC +0.047, t = 2.2. Free-cash-flow yield: +0.038, t = 1.3.
+- Leverage change holds up best: IC +0.046, t = 4.5 (within sector +0.039, t = 5.2, positive in 14 of 15 years). It holds outside Financials (+0.056, versus −0.006 inside) and fades when lagged a year (+0.031): a real, decaying effect, plausibly buybacks (shrinking equity raises leverage).
+- Leverage level: IC +0.046, t = 2.2. Free-cash-flow yield: +0.035, t = 1.2.
 - Book-to-market is mildly negative (−0.026, t = −0.4): value did not pay in this period.
-- Most classic anomalies are near zero among large caps: F-score (−0.004), accruals (−0.002), and the text signals (Risk Factors similarity +0.012, MD&A similarity +0.008, Fog −0.001). That matches the literature on anomalies decaying in large caps.
+- Most classic anomalies are near zero among large caps: F-score (−0.004), accruals (+0.002), and the text signals (Risk Factors similarity +0.011, MD&A similarity +0.007, Fog +0.001). That matches the literature on anomalies decaying in large caps.
 
-**Ranker (walk-forward, test years 2015–2024, configuration chosen inside each fold).** Mean monthly rank IC: LightGBM 0.006, ridge 0.007, F-score 0.008, best single signal chosen in-fold −0.033, random 0.002. **The combined model has no measurable ranking skill across the cross-section.** The in-fold best signal is negative because the signal that looked best in the past did not carry forward.
+**Ranker (walk-forward, test years 2015–2024, configuration chosen inside each fold).** Mean monthly rank IC: LightGBM −0.004, ridge 0.009, F-score 0.009, best single signal chosen in-fold −0.035, random 0.000. **The combined model has no measurable ranking skill across the cross-section.** The in-fold best signal is negative because the signal that looked best in the past did not carry forward.
 
 **Backtest (top and bottom deciles, monthly, 10 bps).**
 
 | Model | Before costs | After costs | Sharpe | Max drawdown | Turnover |
 |---|---|---|---|---|---|
-| LightGBM ranker | +3.9% | +3.0% | 0.36 | −20% | 0.67 |
-| Ridge | +2.0% | +1.3% | 0.17 | −39% | 0.56 |
-| Best single signal | −1.1% | −1.5% | −0.07 | −32% | 0.37 |
-| F-score alone | −2.3% | −3.3% | −0.25 | −46% | 0.84 |
-| Random ranks | −0.4% | −4.6% | −0.97 | −39% | 3.59 |
+| LightGBM ranker | +2.4% | +1.5% | 0.21 | −17% | 0.74 |
+| Ridge | +0.1% | −0.6% | 0.02 | −47% | 0.57 |
+| Best single signal | −0.4% | −0.8% | −0.01 | −32% | 0.38 |
+| F-score alone | −4.6% | −5.6% | −0.49 | −53% | 0.85 |
+| Random ranks | −1.6% | −5.7% | −1.04 | −47% | 3.60 |
 
-The ranker's long leg returned 14.9% a year against SPY's 13.6%. A Sharpe of 0.36 over ten years is about t = 1.1: not distinguishable from no skill. By year, after costs: 2015 −2.8%, 2016 +8.0%, 2017 +5.0%, 2018 +8.5%, 2019 +1.9%, 2020 +34.3%, 2021 −13.3%, 2022 −0.8%, 2023 +8.3%, 2024 −11.7%. One year (2020) carries most of the total. Random ranks lose about their trading costs (turnover 3.6 of a maximum 4), which checks the cost arithmetic.
+The ranker's long leg returned 13.1% a year against SPY's 13.6%. A Sharpe of 0.21 over ten years is about t = 0.7: no evidence of skill. By year, after costs: 2015 −12.7%, 2016 +14.7%, 2017 +4.3%, 2018 −1.9%, 2019 +3.9%, 2020 +20.9%, 2021 −9.5%, 2022 +3.5%, 2023 −0.2%, 2024 −3.2%. Random ranks lose about their trading costs (turnover 3.6 of a maximum 4), which checks the cost arithmetic.
 
-**Honest summary.** The pipeline is leak-free and the baselines behave, but on S&P 500 large caps with these 29 signals there is no proven return-prediction edge. What survives is a small number of single signals (leverage and its change).
+**Honest summary.** The pipeline is leak-free and the baselines behave, but on S&P 500 large caps with these 29 signals there is no return-prediction edge. Each data correction made the result weaker, not stronger (mean IC 0.028 with the wrong prices, 0.006 with correct prices, −0.004 with predecessor fundamentals linked), which is what a spurious edge looks like. What survives is a small number of single signals (leverage and its change).
 
 **Holdout disclosure.** The first ranker run included 2025, which the PRD reserves as the holdout for one final run. Nothing was tuned on it, but the holdout has been seen once. Development runs stop at 2024 by default (`--last-test-year`).
 

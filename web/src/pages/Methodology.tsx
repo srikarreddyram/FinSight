@@ -41,7 +41,7 @@ export function Methodology() {
           <strong>No proven edge in returns.</strong> Over ten test years the return model’s ranking was not distinguishable from no skill: its top-minus-bottom portfolio earned a little after costs, well within what chance produces. A few single signals, such as changes in leverage, held up better. The range of outcomes at any rank is far wider than the difference between ranks.
         </p>
         <p style={{ margin: 0 }}>
-          <strong>Risk grades.</strong> The grades sort risk in the right order, but the models behind them do not yet beat the stock’s own past-year volatility, the bar set for them.
+          <strong>Risk grades.</strong> The grades sort risk in the right order, but they are built mostly from the stock’s own past-year volatility: blending in the filing-based models improves on it only by a hair.
         </p>
         <p style={{ margin: 0 }}>
           <strong>Sectors.</strong> Sectors come from SEC industry codes, which differ from index providers’ sectors for some companies. Generic balance-sheet ratios mean less for banks, real-estate trusts and energy companies.

@@ -122,8 +122,8 @@ runs on S&P 500 members since 2010, with every figure used only from the day aft
 - **Risk Engine**: a 1–5 risk grade from expected volatility and severe-loss risk ([docs/phase-b2-risk.md](docs/phase-b2-risk.md))
 - **Dashboard**: watchlist, company cards, signal lab, backtest and risk pages ([docs/phase-c-dashboard.md](docs/phase-c-dashboard.md))
 
-The results so far are reported as they are: the return ranker shows no proven edge on large caps, and the
-risk models do not beat a stock's own trailing volatility. The docs give the numbers and the baselines.
+The results so far are reported as they are: the return ranker shows no edge on large caps, and the
+risk grades add almost nothing to a stock's own trailing volatility. The docs give the numbers and the baselines.
 
 ```bash
 uv sync --all-extras

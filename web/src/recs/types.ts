@@ -101,8 +101,10 @@ export interface RiskSummary {
   overall: Record<string, number | null>
   by_year: Record<string, number | null>[]
   calibration: { grade: string; n: number; realised_vol: number; severe_rate: number }[]
-  by_sector: { sector: string; n: number; severe_rate: number; auc_model: number | null }[]
+  by_sector: { sector: string; n: number; severe_rate: number; auc_final: number | null; auc_trailing_vol: number | null }[]
   grade_change_rate: number
+  smoothing_months: number
+  stability: { smoothing_months: number; grade_change_rate: number; severe_rate_low: number; severe_rate_severe: number; vol_low: number; vol_severe: number }[]
   distribution: { sector: string; risk_grade: number; n: number }[]
   pillars: Record<string, number>
 }

@@ -33,7 +33,7 @@ def test_grades_are_monthly_quintiles_and_change_rate_counts_consecutive_months_
         for i in range(10)
     ]
     r = pd.DataFrame(rows)
-    r["grade"] = models.grades(r)
+    r["grade"] = models.grades(r, smooth=1)
     assert r.groupby("month")["grade"].value_counts().unique().tolist() == [2]  # 2 stocks in each of 5 grades
     assert r.loc[(r["ticker"] == "S9"), "grade"].unique().tolist() == [5]
     r.loc[(r["ticker"] == "S0") & (r["month"] == months[2]), "grade"] = 3  # April follows a gap: not counted
@@ -55,7 +55,32 @@ def test_walk_forward_learns_volatility_and_downside_without_peeking():
     r = models.walk_forward(pd.DataFrame(rows), first_test_year=2016, last_test_year=2018)
     assert set(r["year"]) == {2016, 2017, 2018}
     out = models.report(r)
-    assert out["overall"].loc["vol_ic_model", "value"] > 0.5
-    assert out["overall"].loc["auc_model", "value"] > 0.65
+    o = out["overall"]["value"]
+    assert o["vol_ic_final"] > 0.5 and o["auc_final"] > 0.65
+    # The blend is chosen with trailing volatility as a candidate, so what the grade uses is never far below it.
+    assert o["vol_ic_final"] >= o["vol_ic_trailing"] - 0.02
+    assert set(r["weight_vol"].unique()) <= set(models.WEIGHTS) | {models.DEFAULT_WEIGHT}
+    assert out["stability"].loc[3, "grade_change_rate"] < out["stability"].loc[1, "grade_change_rate"]
     cal = out["calibration"]
     assert cal["realised_vol"].is_monotonic_increasing and cal.loc["Severe", "severe_rate"] > cal.loc["Low", "severe_rate"]
+
+
+def test_blend_weights_run_from_the_model_alone_to_trailing_volatility_alone():
+    df = pd.DataFrame({"month": [1, 1, 1, 1], "vol_12m": [0.4, 0.3, 0.2, np.nan]})
+    pred = np.array([1.0, 2.0, 3.0, 4.0])  # the model ranks them the other way round
+    assert models.blend(df, pred, 1.0).tolist() == [0.25, 0.5, 0.75, 1.0]
+    b = models.blend(df, pred, 0.0)
+    assert b[:3].tolist() == pytest.approx([1.0, 2 / 3, 1 / 3]) and b[3] == 1.0  # no price history: the model's rank
+    assert models.blend(df, pred, 0.5)[1] == pytest.approx((0.5 + 2 / 3) / 2)
+
+
+def test_smoothing_uses_only_past_months():
+    months = [date(2020, m, 28) for m in (1, 2, 3)]
+    rows = [{"ticker": f"S{i}", "month": m, "pred_vol": float(i), "pred_downside": float(i)} for m in months for i in range(10)]
+    r = pd.DataFrame(rows)
+    jump = (r["ticker"] == "S0") & (r["month"] == months[2])
+    r.loc[jump, ["pred_vol", "pred_downside"]] = 99.0  # S0 turns riskiest in March
+    unsmoothed, smoothed = models.grades(r, smooth=1), models.grades(r, smooth=3)
+    assert unsmoothed[jump].item() == 5 and smoothed[jump].item() < 5  # the jump is damped
+    feb = (r["ticker"] == "S0") & (r["month"] == months[1])
+    assert smoothed[feb].item() == unsmoothed[feb].item() == 1  # February's grade doesn't know about March

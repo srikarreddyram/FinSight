@@ -47,6 +47,12 @@ RANKED = [f"{m}_r" for m in MEASURES]
 # (which used raw features and absolute targets only) had been seen.
 FEATURE_SETS = {"raw": MEASURES, "rank": RANKED}
 VOL_TARGETS = ("abs", "rel")  # log fwd_vol, or log fwd_vol minus that month's median
+# Iteration 3, also added after test-year results had been seen: the model did not beat trailing volatility, so
+# each fold now also chooses, on validation, how much weight the model gets in a blend of the two within-month
+# ranks. 0 is trailing volatility alone, so the grade's inputs can never be chosen to do worse than the baseline.
+WEIGHTS = (1.0, 0.75, 0.5, 0.25, 0.0)
+DEFAULT_WEIGHT = 0.5  # folds too short to validate: an even blend
+SMOOTH = 3  # months of the combined rank averaged before grading (past months only); 1 = no smoothing
 
 
 def scorecard(p: pd.DataFrame) -> pd.Series:
@@ -114,19 +120,28 @@ def _score(df: pd.DataFrame, pred: np.ndarray, kind: str) -> float:
     return monthly_auc(df.assign(pred=pred), "pred")
 
 
+def blend(df: pd.DataFrame, pred: np.ndarray, weight: float) -> pd.Series:
+    """weight × the model's within-month rank + (1 − weight) × trailing volatility's. A stock without a year of
+    price history has no trailing volatility and keeps the model's rank."""
+    model = pd.Series(pred, index=df.index).groupby(df["month"]).rank(pct=True)
+    base = df["vol_12m"].groupby(df["month"]).rank(pct=True).fillna(model)
+    return weight * model + (1 - weight) * base
+
+
 def tune(train: pd.DataFrame, target: str, kind: str) -> tuple[tuple, float | None]:
-    """(grid params, feature set, target variant) by validation score on the last VAL_YEARS, purged."""
-    default = (GRID[0], "raw", "abs")
+    """(grid params, feature set, target variant, blend weight) by validation score on the last VAL_YEARS,
+    purged. The model's configuration is chosen first, then its weight against trailing volatility."""
+    default = (GRID[0], "raw", "abs", DEFAULT_WEIGHT)
     val_start = date(max(m.year for m in train["month"]) - VAL_YEARS + 1, 1, 1)
     inner, val = train[train["target_end"] < val_start], train[train["month"] >= val_start]
     if inner["month"].nunique() < MIN_INNER_MONTHS or val.empty:
         return default, None
     options = [(g, f, v) for g in GRID for f in FEATURE_SETS for v in (VOL_TARGETS if kind == "vol" else ("abs",))]
-    scores = [
-        _score(val, _fit(inner, target, g, kind, FEATURE_SETS[f], v).predict(val[FEATURE_SETS[f]]), kind) for g, f, v in options
-    ]
-    best = int(np.nanargmax(scores))
-    return options[best], scores[best]
+    preds = [_fit(inner, target, g, kind, FEATURE_SETS[f], v).predict(val[FEATURE_SETS[f]]) for g, f, v in options]
+    best = int(np.nanargmax([_score(val, p, kind) for p in preds]))
+    by_weight = [_score(val, blend(val, preds[best], w).to_numpy(), kind) for w in WEIGHTS]
+    w = int(np.nanargmax(by_weight))
+    return (*options[best], WEIGHTS[w]), by_weight[w]
 
 
 def prepare(p: pd.DataFrame) -> pd.DataFrame:
@@ -149,22 +164,30 @@ def walk_forward(p: pd.DataFrame, first_test_year: int, last_test_year: int) -> 
         res["year"] = fold.year
         for kind, target in (("vol", "fwd_vol"), ("downside", "severe")):
             tr = train.dropna(subset=[target])
-            (params, fset, variant), val = tune(tr, target, kind)
+            (params, fset, variant, weight), val = tune(tr, target, kind)
             feats = FEATURE_SETS[fset]
             pred = _fit(tr, target, params, kind, feats, variant).predict(test[feats])
-            # A "rel" volatility prediction is relative to the month's median: fine for ranking within a month.
-            res[f"pred_{kind}"] = np.exp(pred) if kind == "vol" else pred
-            log.info("%d %s: %d rows, %s, %s features, %s target, validation %s",
-                     fold.year, kind, len(tr), params, fset, variant, None if val is None else round(val, 3))  # fmt: skip
+            res[f"model_{kind}"] = pred  # the model alone, for comparison against the baselines
+            res[f"pred_{kind}"] = blend(test, pred, weight)  # what the grade uses: a within-month rank, 0 to 1
+            res[f"weight_{kind}"] = weight
+            log.info("%d %s: %d rows, %s, %s features, %s target, model weight %.2f, validation %s",
+                     fold.year, kind, len(tr), params, fset, variant, weight, None if val is None else round(val, 3))  # fmt: skip
         out.append(res)
     return pd.concat(out, ignore_index=True)
 
 
-def grades(r: pd.DataFrame) -> pd.Series:
-    """Average of the two components' within-month ranks, cut into quintiles: 1 (Low) to 5 (Severe)."""
+def grades(r: pd.DataFrame, smooth: int = SMOOTH) -> pd.Series:
+    """Average of the two components' within-month ranks, cut into quintiles: 1 (Low) to 5 (Severe). With
+    smooth > 1 the combined rank is first averaged over the stock's latest `smooth` months (this one and
+    earlier ones only), which steadies grades without using anything from the future."""
     v = r.groupby("month")["pred_vol"].rank(pct=True)
     d = r.groupby("month")["pred_downside"].rank(pct=True)
     combined = (v + d) / 2
+    if smooth > 1:
+        order = r.assign(combined=combined).sort_values(["ticker", "month"])
+        combined = (
+            order.groupby("ticker")["combined"].transform(lambda s: s.rolling(smooth, min_periods=1).mean()).reindex(r.index)
+        )
     return combined.groupby(r["month"]).transform(lambda s: pd.qcut(s.rank(method="first"), 5, labels=False) + 1)
 
 
@@ -179,50 +202,52 @@ def grade_change_rate(r: pd.DataFrame) -> float:
 
 
 def report(r: pd.DataFrame) -> dict[str, pd.DataFrame]:
+    """Validation tables. "final" is what the grade uses (the model blended with trailing volatility at the
+    weight each fold chose); "model" is the model alone; the rest are baselines."""
     r = r.copy()
     r["grade"] = grades(r)
     r["neg_altman_z"] = -r["altman_z"]
     vol = r.dropna(subset=["fwd_vol"])
     down = r.dropna(subset=["severe"])
-    by_year = pd.DataFrame({
-        "vol_ic_model": vol.groupby("year").apply(lambda g: rank_ic_by_month(g, "pred_vol", "fwd_vol").mean()),
-        "vol_ic_trailing": vol.groupby("year").apply(lambda g: rank_ic_by_month(g, "vol_12m", "fwd_vol").mean()),
-        "vol_ic_scorecard": vol.groupby("year").apply(lambda g: rank_ic_by_month(g, "scorecard", "fwd_vol").mean()),
-        "severe_rate": down.groupby("year")["severe"].mean(),
-        "auc_model": down.groupby("year").apply(lambda g: auc(g["severe"].to_numpy(), g["pred_downside"].to_numpy())),
-        "auc_scorecard": down.groupby("year").apply(lambda g: auc(g["severe"].to_numpy(), g["scorecard"].to_numpy())),
-        "auc_altman_z": down.groupby("year").apply(lambda g: auc(g["severe"].to_numpy(), g["neg_altman_z"].to_numpy())),
-        "auc_trailing_vol": down.groupby("year").apply(lambda g: auc(g["severe"].to_numpy(), g["vol_12m"].to_numpy())),
-        "mauc_model": down.groupby("year").apply(lambda g: monthly_auc(g, "pred_downside")),
-        "mauc_trailing_vol": down.groupby("year").apply(lambda g: monthly_auc(g, "vol_12m")),
-    })  # fmt: skip
-    overall = pd.Series({
-        "vol_ic_model": rank_ic_by_month(vol, "pred_vol", "fwd_vol").mean(),
-        "vol_ic_trailing": rank_ic_by_month(vol, "vol_12m", "fwd_vol").mean(),
-        "vol_ic_scorecard": rank_ic_by_month(vol, "scorecard", "fwd_vol").mean(),
-        "auc_model": auc(down["severe"].to_numpy(), down["pred_downside"].to_numpy()),
-        "auc_scorecard": auc(down["severe"].to_numpy(), down["scorecard"].to_numpy()),
-        "auc_altman_z": auc(down["severe"].to_numpy(), down["neg_altman_z"].to_numpy()),
-        "auc_trailing_vol": auc(down["severe"].to_numpy(), down["vol_12m"].to_numpy()),
-        "monthly_auc_model": monthly_auc(down, "pred_downside"),
-        "monthly_auc_scorecard": monthly_auc(down, "scorecard"),
-        "monthly_auc_altman_z": monthly_auc(down, "neg_altman_z"),
-        "monthly_auc_trailing_vol": monthly_auc(down, "vol_12m"),
-        "top10_severe_model": top_decile_rate(down, "pred_downside"),
-        "top10_severe_trailing_vol": top_decile_rate(down, "vol_12m"),
-        "top10_severe_scorecard": top_decile_rate(down, "scorecard"),
-        "base_severe_rate": down["severe"].mean(),
-    }, name="value").to_frame()  # fmt: skip
+    vol_scores = {"final": "pred_vol", "model": "model_vol", "trailing": "vol_12m", "scorecard": "scorecard"}
+    down_scores = {"final": "pred_downside", "model": "model_downside", "trailing_vol": "vol_12m",
+                   "scorecard": "scorecard", "altman_z": "neg_altman_z"}  # fmt: skip
+
+    def ic(g, col):
+        return rank_ic_by_month(g, col, "fwd_vol").mean()
+
+    by_year = pd.DataFrame(
+        {f"vol_ic_{k}": vol.groupby("year").apply(lambda g, c=c: ic(g, c)) for k, c in vol_scores.items()}
+        | {"severe_rate": down.groupby("year")["severe"].mean()}
+        | {f"mauc_{k}": down.groupby("year").apply(lambda g, c=c: monthly_auc(g, c)) for k, c in down_scores.items()}
+        | {"weight_vol": r.groupby("year")["weight_vol"].first(), "weight_downside": r.groupby("year")["weight_downside"].first()}
+    )
+    overall = pd.Series(
+        {f"vol_ic_{k}": ic(vol, c) for k, c in vol_scores.items()}
+        | {f"monthly_auc_{k}": monthly_auc(down, c) for k, c in down_scores.items()}
+        | {f"auc_{k}": auc(down["severe"].to_numpy(), down[c].to_numpy()) for k, c in down_scores.items()}
+        | {f"top10_severe_{k}": top_decile_rate(down, c) for k, c in down_scores.items() if k != "altman_z"}
+        | {"base_severe_rate": down["severe"].mean()},
+        name="value",
+    ).to_frame()
     calibration = (
         r.groupby("grade")
         .agg(n=("ticker", "size"), realised_vol=("fwd_vol", "mean"), severe_rate=("severe", "mean"))
         .rename(index=GRADES)
     )
-    sector = down.assign(grade=r["grade"]).groupby("sector").apply(
+    sector = down.groupby("sector").apply(
         lambda g: pd.Series({"n": len(g), "severe_rate": g["severe"].mean(),
-                             "auc_model": auc(g["severe"].to_numpy(), g["pred_downside"].to_numpy())})
+                             "auc_final": auc(g["severe"].to_numpy(), g["pred_downside"].to_numpy()),
+                             "auc_trailing_vol": auc(g["severe"].to_numpy(), g["vol_12m"].to_numpy())})
     )  # fmt: skip
-    stability = pd.Series({"monthly_grade_change_rate": grade_change_rate(r)}, name="value").to_frame()
+    # Steadier grades against calibration: how often grades change, and how far apart the end grades' outcomes sit.
+    rows = {}
+    for months in (1, 3, 6):
+        g = r.assign(grade=grades(r, smooth=months))
+        by = g.groupby("grade").agg(vol=("fwd_vol", "mean"), severe=("severe", "mean"))
+        rows[months] = {"grade_change_rate": grade_change_rate(g), "severe_rate_low": by.loc[1, "severe"],
+                        "severe_rate_severe": by.loc[5, "severe"], "vol_low": by.loc[1, "vol"], "vol_severe": by.loc[5, "vol"]}  # fmt: skip
+    stability = pd.DataFrame(rows).T.rename_axis("smoothing_months")
     return {"overall": overall, "by_year": by_year, "calibration": calibration, "by_sector": sector, "stability": stability}
 
 

@@ -30,6 +30,22 @@
   --color-tier-good: #4d7c0f;
 }
 
+:root {
+  /* Chart colours, validated for colour-blind separation and contrast on the card surface (light and dark):
+     pos/neg mark which side of zero a value is; context is the de-emphasis gray for baselines;
+     grade-1..5 is one hue stepped light to dark for the ordered risk grades.
+     They live in plain :root, not @theme: Tailwind only emits theme variables it sees used, and the grade
+     colours are looked up by a computed name (gradeColor), so four of the five were being dropped. */
+  --chart-pos: #0d9488;
+  --chart-neg: #c2410c;
+  --chart-context: #a8adb7;
+  --grade-1: #fa9d68;
+  --grade-2: #db814c;
+  --grade-3: #bc662f;
+  --grade-4: #9f4b0b;
+  --grade-5: #823000;
+}
+
 @media (prefers-color-scheme: dark) {
   :root {
     --color-paper: #0f1115;
@@ -52,6 +68,15 @@
     --color-warn-soft: #3a2a0c;
     --color-red: #f87171;
     --color-tier-good: #a3e635;
+    --chart-pos: #1aa596;
+    --chart-neg: #d97736;
+    --chart-context: #5b616d;
+    /* On a dark surface more risk reads lighter, so the ramp's anchor flips. */
+    --grade-1: #894100;
+    --grade-2: #a65c20;
+    --grade-3: #c3773e;
+    --grade-4: #e1925a;
+    --grade-5: #ffaf76;
   }
 }
 
@@ -116,4 +141,68 @@ body {
 .hover-lift:hover {
   background: var(--color-hover);
   border-color: var(--color-accent);
+}
+
+/* Dashboard tables: mono numerals in aligned columns, hairline rows, sticky header. */
+.dash-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.75rem;
+}
+.dash-table th {
+  position: sticky;
+  top: 0;
+  background: var(--color-card);
+  color: var(--color-muted);
+  font-weight: 500;
+  font-size: 0.625rem;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  text-align: right;
+  padding: 0.6rem 0.625rem;
+  border-bottom: 1px solid var(--color-line);
+  white-space: nowrap;
+  z-index: 1;
+}
+.dash-table td {
+  text-align: right;
+  padding: 0.5rem 0.625rem;
+  border-bottom: 1px solid var(--color-line);
+  white-space: nowrap;
+}
+.dash-table th.left,
+.dash-table td.left {
+  text-align: left;
+}
+.dash-table tbody tr:hover {
+  background: var(--color-hover);
+}
+.dash-table th button {
+  all: unset;
+  cursor: pointer;
+}
+.dash-table th button:focus-visible,
+.nav-link:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+.nav-link {
+  font-family: var(--font-mono);
+  font-size: 0.656rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  text-decoration: none;
+  color: var(--color-muted);
+  padding: 6px 2px;
+  border-bottom: 2px solid transparent;
+  white-space: nowrap;
+}
+.nav-link:hover {
+  color: var(--color-ink);
+}
+.nav-link[aria-current="page"] {
+  color: var(--color-ink);
+  border-bottom-color: var(--color-accent);
 }

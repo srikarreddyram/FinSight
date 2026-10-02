@@ -9,7 +9,37 @@ import { TracePanel } from './components/TracePanel'
 import { DefaultWash, EdgeBezel, HeaderStripe } from './design/chrome'
 import { AnswerSkeleton, Card, ErrorState, PageSkeleton, SectionLabel, Segmented } from './design/primitives'
 import { C, F, NUM } from './design/tokens'
+import { Backtest } from './pages/Backtest'
+import { Company } from './pages/Company'
+import { Methodology } from './pages/Methodology'
+import { Risk } from './pages/Risk'
+import { SignalLab } from './pages/SignalLab'
+import { Watchlist } from './pages/Watchlist'
 import type { Answer, Citation, DocumentInfo, Run } from './types'
+
+// Hash routes keep the dashboard a static single page: '#/watchlist', '#/company/AAPL'. No hash is the Copilot.
+const NAV = [
+  { path: '', label: 'Copilot' },
+  { path: '/watchlist', label: 'Watchlist' },
+  { path: '/signals', label: 'Signal Lab' },
+  { path: '/backtest', label: 'Backtest' },
+  { path: '/risk', label: 'Risk' },
+  { path: '/methodology', label: 'Methodology' },
+] as const
+
+function useRoute(): string {
+  const read = () => window.location.hash.replace(/^#/, '')
+  const [route, setRoute] = useState(read)
+  useEffect(() => {
+    const on = () => {
+      setRoute(read())
+      window.scrollTo(0, 0)
+    }
+    window.addEventListener('hashchange', on)
+    return () => window.removeEventListener('hashchange', on)
+  }, [])
+  return route
+}
 
 const HISTORY_KEY = 'finsight.history'
 
@@ -48,6 +78,9 @@ export default function App() {
 
   const indexed = docs.filter((d) => d.indexed)
   const companies = new Set(indexed.map((d) => d.company)).size
+  const route = useRoute()
+  const section = route.startsWith('/company/') ? '/watchlist' : route
+  const indexedTickers = new Set(indexed.map((d) => d.ticker))
 
   return (
     <div style={{ minHeight: '100vh', position: 'relative', color: C.text }}>
@@ -64,6 +97,13 @@ export default function App() {
           <span className="hidden sm:inline" style={{ ...NUM, fontSize: 10.5, color: apiDown ? C.red : C.muted, letterSpacing: '0.08em' }}>
             {apiDown ? 'API OFFLINE' : `${indexed.length} FILINGS · ${companies} COMPANIES`}
           </span>
+          <nav aria-label="Sections" style={{ display: 'flex', gap: 18, marginLeft: 12, overflowX: 'auto' }}>
+            {NAV.map((n) => (
+              <a key={n.path} href={n.path ? `#${n.path}` : '/'} className="nav-link" aria-current={section === n.path ? 'page' : undefined}>
+                {n.label}
+              </a>
+            ))}
+          </nav>
           <div style={{ marginLeft: 'auto', display: 'flex', gap: 10 }}>
             <HeaderButton onClick={() => setLibraryOpen(true)}>Library</HeaderButton>
           </div>
@@ -72,7 +112,21 @@ export default function App() {
       </header>
 
       <div style={{ position: 'relative', zIndex: 1 }}>
-        <Workspace apiDown={apiDown} pending={pending} onPendingUsed={() => setPending(null)} />
+        {route === '/watchlist' ? (
+          <Watchlist />
+        ) : route.startsWith('/company/') ? (
+          <Company ticker={decodeURIComponent(route.slice('/company/'.length))} hasFilings={indexedTickers.has(decodeURIComponent(route.slice('/company/'.length)))} />
+        ) : route === '/signals' ? (
+          <SignalLab />
+        ) : route === '/backtest' ? (
+          <Backtest />
+        ) : route === '/risk' ? (
+          <Risk />
+        ) : route === '/methodology' ? (
+          <Methodology />
+        ) : (
+          <Workspace apiDown={apiDown} pending={pending} onPendingUsed={() => setPending(null)} />
+        )}
       </div>
 
       <LibraryDrawer open={libraryOpen} docs={docs} onClose={() => setLibraryOpen(false)} onIngested={refreshDocs} />

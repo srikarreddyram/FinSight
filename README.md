@@ -112,12 +112,43 @@ evidence to tell parsing losses from retrieval misses. Results are in [eval/REPO
   day resumes it. Set `FINSIGHT_MODEL_OVERRIDE=ollama:llama3.1:8b` for unlimited local runs, or
   `anthropic:claude-opus-5` for a paid model.
 
+## Research platform (in progress)
+
+The Copilot is the first module of a filings-driven research platform ([docs/PRD.md](docs/PRD.md)). The rest
+runs on S&P 500 members since 2010, with every figure used only from the day after its filing reached the SEC:
+
+- **Warehouse**: XBRL facts, prices, 10-K text and EDGAR's filing index in DuckDB ([docs/phase-a-warehouse.md](docs/phase-a-warehouse.md))
+- **Signals, ranker, backtest**: 29 signals, a walk-forward LightGBM ranker and a monthly long-short backtest ([docs/phase-b-signals.md](docs/phase-b-signals.md))
+- **Risk Engine**: a 1–5 risk grade from expected volatility and severe-loss risk ([docs/phase-b2-risk.md](docs/phase-b2-risk.md))
+- **Dashboard**: watchlist, company cards, signal lab, backtest and risk pages ([docs/phase-c-dashboard.md](docs/phase-c-dashboard.md))
+
+The results so far are reported as they are: the return ranker shows no proven edge on large caps, and the
+risk models do not beat a stock's own trailing volatility. The docs give the numbers and the baselines.
+
+```bash
+uv sync --all-extras
+uv run python -m warehouse.universe          # S&P 500 membership since 2010
+uv run python -m warehouse.xbrl --universe   # then: warehouse.sectors, warehouse.prices --universe SPY,
+                                             #       warehouse.tenk --universe, warehouse.events
+uv run python -m models.study                # signal panel and single-signal study
+uv run python -m models.ranker && uv run python -m models.backtest
+uv run python -m risk.panel && uv run python -m risk.models
+uv run python -m recs.build                  # this month's watchlist and the dashboard's data
+```
+
+Set `FINSIGHT_THREADS=3` to keep a laptop cool during the builds. Research and education only; not financial advice.
+
 ## Layout
 
 ```
 app/        query path: config, fiscal, query_parser, retrieve, rerank, answer, numbers, pipeline, api, viewer
 ingest/     fetch_edgar, parse, chunk, index, inspect, manifest
 eval/       financebench_loader, run, judge, metrics, report, unanswerable.yaml, india_set.yaml
+warehouse/  point-in-time store: db, pit, xbrl, prices, sections, tenk, events, universe, sectors, fundamentals
+signals/    accounting, fundamentals, valuation, text
+models/     panel, ranks, walkforward, study, ranker, backtest
+risk/       pillars, market, panel, models
+recs/       build (latest-month scoring, drivers), api (dashboard endpoints), labels
 web/        React + TypeScript front end (Vite, Tailwind)
 ui/         streamlit_app.py (the original PRD prototype UI)
 data/       manifest*.yaml (URLs and metadata; PDFs are downloaded, never committed)

@@ -49,3 +49,17 @@ export function tierColor(pct: number | null | undefined): string {
   if (pct == null) return C.muted
   return (TIERS.find((t) => pct >= t.min) ?? TIERS[TIERS.length - 1]).color
 }
+
+// Chart colours (validated; see index.css). Marks wear these; text never does.
+export const CH = {
+  pos: 'var(--chart-pos)',
+  neg: 'var(--chart-neg)',
+  context: 'var(--chart-context)',
+  grid: 'var(--color-line)',
+} as const
+
+/** Risk grades 1 (Low) to 5 (Severe): one hue, stepped. Always shown with the grade's name beside it. */
+export const GRADE_LABELS = ['Low', 'Moderate', 'Elevated', 'High', 'Severe'] as const
+export function gradeColor(grade: number): string {
+  return `var(--grade-${Math.min(5, Math.max(1, Math.round(grade)))})`
+}

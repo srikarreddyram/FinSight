@@ -43,6 +43,39 @@ WIKI_HEADERS = {"User-Agent": "FinSight/0.1 (student research project)"}  # no c
 HISTORY_START = date(2010, 1, 1)
 
 
+# Wikipedia's name for a company -> the name it filed under with the SEC, where they differ by more than a suffix.
+SEC_NAMES = {
+    "DuPont": "DuPont E I de Nemours",  # the pre-2017 company; DowDuPont is handled by HISTORICAL_TICKERS
+    "TSYS": "Total System Services",
+    "CA Technologies": "CA, Inc.",
+    "JCPenney": "Penney J C Co",
+    "Suntory Global Spirits": "Beam Inc",
+    "QuintilesIMS": "Quintiles IMS Holdings",
+}
+# Old tickers whose row in the change log can't be told apart by name: DowDuPont (DWDP, 2017-2019) appears as
+# "DuPont", the same name as the company it replaced.
+HISTORICAL_TICKERS = {"DWDP": 1666700}
+# Reorganisations that changed the company's name as well as its SEC ID: successor CIK -> the name its
+# predecessor filed under. Same-name reorganisations (Disney 2019, Cigna 2018, Medtronic 2015) need no entry.
+PREDECESSOR_NAMES = {
+    1652044: "Google Inc",  # Alphabet, 2015 holding company
+    1707925: "Praxair Inc",  # Linde plc, 2018: Praxair was the accounting acquirer
+    1618921: "Walgreen Co",  # Walgreens Boots Alliance, 2014
+    1841666: "Apache Corp",  # APA Corporation, 2021 holding company
+    1792044: "Mylan N.V.",  # Viatris, 2020
+    1623613: "Mylan Inc",  # Mylan N.V., 2015 inversion
+    1681459: "FMC Technologies Inc",  # TechnipFMC, 2017
+    2005951: "WestRock Co",  # Smurfit Westrock, 2024
+    1636023: "Rock Tenn Co",  # WestRock, 2015: Rock-Tenn was the accounting acquirer
+    2041610: "Paramount Global",  # Paramount Skydance, 2025
+    2115436: "Exxon Mobil Corp",  # 2026 redomicile under a new SEC ID
+    1571949: "IntercontinentalExchange Inc",  # ICE Group, 2013 (NYSE Euronext deal)
+    1585644: "Windstream Corp",  # Windstream Holdings, 2013
+    1039101: "L 3 Communications Holdings Inc",  # L3 Technologies absorbed its holding company, 2016
+    1578845: "Watson Pharmaceuticals Inc",  # Actavis plc (later Allergan plc), 2013
+}
+
+
 @dataclass(frozen=True)
 class Change:
     day: date
@@ -216,9 +249,14 @@ class Resolver:
         if not words:
             return []
         cands = set.intersection(*(self.by_token.get(w, set()) for w in words))
-        if first_word_only:  # the word must start the filer's name: "Lorillard" -> "LORILLARD, INC.", not "TONE IN TWENTY"
+        if first_word_only:
+            # The word must start the filer's name and be nearly all of it: "Lorillard" -> "LORILLARD, INC.", not
+            # "TONE IN TWENTY", and not Ribbon Communications' old shell name "Solstice Sapphire Investments".
             (w,) = words
-            cands = {c for c in cands if any(self.first.get((c, i)) == w for i in range(len(self.tokens[c])))}
+            cands = {
+                c for c in cands
+                if any(self.first.get((c, i)) == w and len(t) <= 2 for i, t in enumerate(self.tokens[c]))
+            }  # fmt: skip
         # All the words must appear in one of a filer's names, not spread across several of them.
         extra = {
             c: min(len(t - words) for t in self.tokens[c] if words <= t) for c in cands if any(words <= t for t in self.tokens[c])
@@ -237,9 +275,14 @@ class Resolver:
         return self.cache[key]
 
     def _candidates(self, tk: str | None, name: str | None, day: date, removal: bool = False) -> list[int]:
+        if tk in HISTORICAL_TICKERS:
+            return [HISTORICAL_TICKERS[tk]]
         for cik in dict.fromkeys(c for c in (self.current.get(tk), self.sec_tickers.get(tk)) if c):
-            if self._near(cik, day, removal):
+            # A company added before its first 10-K (a fresh spin-off) has no filings to check against; a reused
+            # ticker's new owner always has some, just not near the date.
+            if self._near(cik, day, removal) or (not removal and not self.ten_k_dates(cik)):
                 return [cik]
+        name = SEC_NAMES.get(name, name)
         groups = (
             lambda: sorted(self.by_name.get(norm_name(name), ())),
             lambda: self._fuzzy(name),
@@ -252,6 +295,54 @@ class Resolver:
             if out:  # a closer kind of match wins outright; fuzzier groups only fill in when it found nothing
                 break
         return out
+
+
+def find_predecessors(
+    resolver: Resolver, stays: list[Stay], company_names: dict[int, str] | None = None, since: date = HISTORY_START
+) -> tuple[list[tuple[int, int, date]], dict[int, date]]:
+    """Reorganisations the index change log doesn't record: a member whose 10-Ks begin well after its membership
+    did, and the company that filed them before. Returns (links, start fixes).
+
+    A predecessor must have filed 10-Ks for years and up to the successor's first one. If the predecessor was
+    itself an index member under its own ID (two constituents in sequence), nothing is linked; instead the
+    successor's open-ended start is set to the day the predecessor left."""
+    starts: dict[int, date] = {}
+    names: dict[int, str] = {}
+    ends: dict[int, date | None] = {}
+    for x in stays:
+        starts[x.cik] = min(starts.get(x.cik, date.max), x.start or since)
+        names[x.cik] = (company_names or {}).get(x.cik, x.name)  # a stay's own label can be just the ticker
+        ends[x.cik] = None if x.end is None or ends.get(x.cik, x.end) is None else max(ends.get(x.cik, x.end), x.end)
+    links, fixes, queue, seen = [], {}, list(starts), set()
+    while queue:
+        cik = queue.pop(0)
+        if cik in seen:
+            continue
+        seen.add(cik)
+        filed = resolver.ten_k_dates(cik)
+        first = min(filed) if filed else date.today()
+        start = max(starts.get(cik, since), since)
+        if (first - start).days < 430:  # its own filings cover its membership
+            continue
+        search = PREDECESSOR_NAMES.get(cik) or SEC_NAMES.get(names.get(cik, ""), names.get(cik, ""))
+        if not search:
+            continue
+        best, best_n = None, 0
+        for c in dict.fromkeys([*sorted(resolver.by_name.get(norm_name(search), ())), *resolver._fuzzy(search)]):
+            if c == cik or c in seen:
+                continue
+            before = [d for d in resolver.ten_k_dates(c) if d < first]
+            if len(before) >= 3 and (first - max(before)).days <= 550 and len(before) > best_n:
+                best, best_n = c, len(before)
+        if best is None:
+            continue
+        if best in starts and best in ends and ends[best] is not None:  # both were constituents, one after the other
+            fixes[cik] = ends[best]
+            continue
+        links.append((cik, best, first))
+        names[best] = search
+        queue.append(best)
+    return links, fixes
 
 
 def primary_tickers(wiki: list[tuple[str, int, str]], sec: list[tuple[str, int]]) -> dict[int, str]:
@@ -299,12 +390,6 @@ def build(con: duckdb.DuckDBPyConnection) -> list[Stay]:
     links: list[tuple[int, int, date]] = []
     resolver = Resolver(edgar, current, sec_tickers, cik_names)
     resolver.load_cache(cache.parent / "ten_k_dates.json")
-    try:
-        stays = reconstruct(current, changes, resolver, links=links)
-    finally:
-        resolver.save_cache()
-    con.execute("delete from cik_links")
-    con.executemany("insert into cik_links values (?, ?, ?)", links)
     wiki = [
         (ticker(t), int(c), n) for t, c, n in zip(current_df["Symbol"], current_df["CIK"], current_df["Security"], strict=True)
     ]
@@ -312,6 +397,21 @@ def build(con: duckdb.DuckDBPyConnection) -> list[Stay]:
     wiki_names: dict[int, str] = {}
     for _, cik, name in wiki:
         wiki_names.setdefault(cik, re.sub(r"\s*\((?:Class|Series) \w+\)$", "", name))
+    try:
+        stays = reconstruct(current, changes, resolver, links=links)
+        found, fixes = find_predecessors(resolver, stays, wiki_names)
+    finally:
+        resolver.save_cache()
+    stays = [Stay(x.cik, x.ticker, x.name, fixes[x.cik], x.end) if x.start is None and x.cik in fixes else x for x in stays]
+    links = list({(a, b): (a, b, d) for a, b, d in [*links, *found]}.values())
+    sec_name: dict[int, str] = {}
+    for name, cik in cik_names:
+        sec_name.setdefault(cik, name.title())
+    con.execute("delete from cik_links")
+    con.executemany("insert into cik_links values (?, ?, ?)", links)
+    for _, pred, _ in links:  # a predecessor gets a row so the loaders fetch its filings; it has no ticker of its own
+        con.execute("insert into companies (cik, name) values (?, ?) on conflict (cik) do nothing", [pred, sec_name.get(pred)])
+    log.info("%d predecessor links, %d start fixes", len(links), len(fixes))
     con.execute("delete from universe")
     con.executemany(
         "insert into universe values (?, ?, ?, ?, ?, 'wikipedia')", [(x.cik, x.ticker, x.name, x.start, x.end) for x in stays]

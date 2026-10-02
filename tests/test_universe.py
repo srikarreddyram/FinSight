@@ -118,3 +118,53 @@ def test_primary_ticker_is_the_index_symbol_or_secs_first_listing_never_a_prefer
     wiki = [("GOOGL", 2, "Alphabet (Class A)"), ("GOOG", 2, "Alphabet (Class C)")]
     sec = [("F", 37996), ("F-PB", 37996), ("F-PD", 37996), ("GOOGL", 2), ("GOOG", 2), ("TAP", 24545), ("TAP-A", 24545)]
     assert primary_tickers(wiki, sec) == {2: "GOOGL", 37996: "F", 24545: "TAP"}
+
+
+def _resolver(names, filed):
+    from warehouse.universe import Resolver
+
+    r = Resolver(None, {}, {}, names)
+    r.ten_k_dates = lambda cik: filed.get(cik, [])
+    return r
+
+
+def test_first_word_fallback_needs_the_word_to_be_nearly_the_whole_name():
+    r = _resolver([("SOLSTICE SAPPHIRE INVESTMENTS, INC.", 1), ("RIBBON COMMUNICATIONS INC.", 1), ("NICOR INC", 2)],
+                  {1: [date(2025, 3, 1)], 2: [date(2011, 2, 1)]})  # fmt: skip
+    assert r("SOLS", "Solstice Advanced Materials", date(2025, 12, 22), removal=True) is None
+    assert r("GAS", "Nicor Gas", date(2011, 12, 12), removal=True) == 2
+
+
+def test_a_fresh_spin_off_is_accepted_by_ticker_before_its_first_10k():
+    from warehouse.universe import Resolver
+
+    r = Resolver(None, {"HONA": 50, "IR": 60}, {}, [])
+    r.ten_k_dates = lambda cik: {60: [date(2018, 2, 1), date(2019, 2, 1)]}.get(cik, [])
+    assert r("HONA", "Honeywell Aerospace", date(2026, 6, 29)) == 50  # no 10-K yet: nothing to contradict the ticker
+    assert r("IR", "Ingersoll-Rand", date(2010, 11, 17)) is None  # a reused ticker's owner has filings, just not then
+
+
+def test_predecessors_are_found_by_filing_history_and_chained():
+    from warehouse.universe import PREDECESSOR_NAMES, Stay, find_predecessors
+
+    yearly = lambda a, b: [date(y, 2, 15) for y in range(a, b + 1)]  # noqa: E731
+    names = [("WALT DISNEY CO", 10), ("WALT DISNEY CO/", 11), ("WALT DISNEY CO /TA", 12), ("VIATRIS INC", 1792044),
+             ("MYLAN N.V.", 1623613), ("MYLAN INC.", 69499), ("FOX CORP", 20), ("TWENTY-FIRST CENTURY FOX, INC.", 21),
+             ("STEADY CO", 30)]  # fmt: skip
+    filed = {10: yearly(2020, 2026), 11: yearly(2005, 2019), 1792044: yearly(2021, 2026), 1623613: yearly(2016, 2020),
+             69499: yearly(2003, 2015), 20: yearly(2020, 2026), 21: yearly(2005, 2019), 30: yearly(2003, 2026)}  # fmt: skip
+    stays = [Stay(10, "DIS", "Walt Disney Co", None, None), Stay(1792044, "VTRS", "Viatris", None, None),
+             Stay(20, "FOX", "Fox Corp", None, None), Stay(21, "FOXA", "Fox Corp", None, date(2019, 3, 19)),
+             Stay(30, "STDY", "Steady Co", None, None)]  # fmt: skip
+    assert PREDECESSOR_NAMES[1792044] == "Mylan N.V." and PREDECESSOR_NAMES[1623613] == "Mylan Inc"
+    links, fixes = find_predecessors(_resolver(names, filed), stays)
+    assert {(s, p) for s, p, _ in links} == {(10, 11), (1792044, 1623613), (1623613, 69499)}  # same name; a two-step chain
+    # 21st Century Fox was a constituent itself: Fox Corp isn't linked to it, its open start becomes the day 21CF left.
+    assert fixes == {20: date(2019, 3, 19)}
+
+
+def test_dowdupont_is_told_apart_from_the_dupont_it_replaced():
+    r = _resolver([("DUPONT E I DE NEMOURS & CO", 30554), ("DUPONT DE NEMOURS, INC.", 1666700)],
+                  {30554: [date(2016, 2, 4), date(2017, 2, 2)], 1666700: [date(2018, 2, 15)]})  # fmt: skip
+    assert r("DD", "DuPont", date(2017, 9, 1), removal=True) == 30554  # the old company, by SEC's spelling of its name
+    assert r("DWDP", "DuPont", date(2017, 9, 1)) == 1666700  # the merged company, by its ticker

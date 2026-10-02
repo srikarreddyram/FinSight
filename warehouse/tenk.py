@@ -151,7 +151,8 @@ def fetch(
     if not s.sec_user_agent:
         raise SystemExit('Set FINSIGHT_SEC_USER_AGENT in .env, e.g. "FinSight research you@example.com" (SEC requires it)')
     edgar = Edgar(s.sec_user_agent)
-    where = "where cik in (select cik from universe)" if universe else ""
+    # Universe companies and the predecessors they reorganised from (warehouse.universe's cik_links).
+    where = "where cik in (select cik from universe union select predecessor from cik_links)" if universe else ""
     companies = con.execute(f"select cik, ticker from companies {where} order by ticker").fetchall()
     if tickers:
         companies = [(c, t) for c, t in companies if t in tickers]

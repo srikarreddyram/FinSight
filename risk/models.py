@@ -1,6 +1,6 @@
 """Risk Engine models and grades (platform PRD, Module 7).
 
-    uv run python -m risk.models          # needs data/study/sp500/risk_panel.parquet (uv run python -m risk.panel)
+    uv run python -m risk.models          # needs the study's risk_panel.parquet (uv run python -m risk.panel)
 
 Two components, each walk-forward with the Signal Lab's purged folds (purged on the 12-month risk window) and
 tuning inside each fold's training window only:
@@ -160,7 +160,8 @@ def walk_forward(p: pd.DataFrame, first_test_year: int, last_test_year: int) -> 
         train, test = p.loc[fold.train], p.loc[fold.test]
         if train["month"].nunique() < MIN_INNER_MONTHS:
             continue
-        res = test[["ticker", "month", "sector", "fwd_vol", "severe", "vol_12m", "altman_z", "scorecard"]].copy()
+        keep = ("ticker", "month", "sector", "tier", "fwd_vol", "severe", "vol_12m", "altman_z", "scorecard")
+        res = test[[c for c in keep if c in test]].copy()
         res["year"] = fold.year
         for kind, target in (("vol", "fwd_vol"), ("downside", "severe")):
             tr = train.dropna(subset=[target])
@@ -248,7 +249,18 @@ def report(r: pd.DataFrame) -> dict[str, pd.DataFrame]:
         rows[months] = {"grade_change_rate": grade_change_rate(g), "severe_rate_low": by.loc[1, "severe"],
                         "severe_rate_severe": by.loc[5, "severe"], "vol_low": by.loc[1, "vol"], "vol_severe": by.loc[5, "vol"]}  # fmt: skip
     stability = pd.DataFrame(rows).T.rename_axis("smoothing_months")
-    return {"overall": overall, "by_year": by_year, "calibration": calibration, "by_sector": sector, "stability": stability}
+    out = {"overall": overall, "by_year": by_year, "calibration": calibration, "by_sector": sector, "stability": stability}
+    if "tier" in r and r["tier"].nunique() > 1:  # the same scores judged inside one index at a time
+        out["by_tier"] = pd.DataFrame({
+            t: {"n": len(g), "severe_rate": g["severe"].mean(), "median_fwd_vol": g["fwd_vol"].median(),
+                "vol_ic_final": ic(g.dropna(subset=["fwd_vol"]), "pred_vol"),
+                "vol_ic_trailing": ic(g.dropna(subset=["fwd_vol"]), "vol_12m"),
+                "monthly_auc_final": monthly_auc(g.dropna(subset=["severe"]), "pred_downside"),
+                "monthly_auc_trailing_vol": monthly_auc(g.dropna(subset=["severe"]), "vol_12m"),
+                "share_graded_severe": (g["grade"] == 5).mean()}
+            for t, g in r.groupby("tier")
+        }).T  # fmt: skip
+    return out
 
 
 def main() -> None:

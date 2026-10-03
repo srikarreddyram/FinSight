@@ -1,6 +1,6 @@
-"""The Risk Engine's panel: the S&P 500 signal panel's stock-months plus the five pillars and the risk targets.
+"""The Risk Engine's panel: the signal panel's stock-months plus the five pillars and the risk targets.
 
-    uv run python -m risk.panel        # needs data/study/sp500/panel.parquet (uv run python -m models.study)
+    uv run python -m risk.panel        # needs the study's panel.parquet (uv run python -m models.study)
 
 Rows and point-in-time rules are the Signal Lab's. Pillar measures already built as signals (Altman Z,
 accruals, Beneish M, leverage, 10-K similarity) are reused; the rest come from risk/pillars.py (filings) and
@@ -11,11 +11,11 @@ from __future__ import annotations
 
 import logging
 from concurrent.futures import ProcessPoolExecutor
-from pathlib import Path
 
 import duckdb
 import pandas as pd
 
+from models import STUDY_DIR as STUDY
 from models import THREADS
 from models.study import _build_chunk, _stays
 from risk.market import market_panel
@@ -24,7 +24,6 @@ from warehouse import db
 
 log = logging.getLogger(__name__)
 
-STUDY = Path("data/study/sp500")
 REUSED = ["altman_z", "accruals", "beneish_m", "leverage", "leverage_chg", "sim_risk_factors", "sim_mda",
           "risk_factors_words_chg", "fog_mda"]  # fmt: skip
 PILLARS = {
@@ -50,7 +49,7 @@ def build(con: duckdb.DuckDBPyConnection, workers: int = THREADS) -> pd.DataFram
     base["month"] = pd.to_datetime(base["month"]).dt.date
     months = sorted(base["month"].unique())
     stays = _stays(con)
-    names = dict(con.execute("select ticker, cik from companies where cik in (select cik from universe)").fetchall())
+    names = dict(base[["ticker", "cik"]].drop_duplicates().itertuples(index=False))
     items = sorted(names.items())
     chunks = [dict(items[i::workers]) for i in range(workers)]
     log.info("filing pillars: %d companies x %d months, %d workers", len(names), len(months), workers)
@@ -62,7 +61,8 @@ def build(con: duckdb.DuckDBPyConnection, workers: int = THREADS) -> pd.DataFram
     fam = fam[["ticker", "month", *new, "info_date"]].rename(columns={"info_date": "risk_info_date"})
     log.info("market pillar and targets")
     mkt = market_panel(con, sorted(base["ticker"].unique()), months)
-    p = base[["ticker", "cik", "month", "sector", "info_date", *REUSED]].merge(fam, on=["ticker", "month"], how="left")
+    keep = [c for c in ("ticker", "cik", "month", "sector", "tier", "info_date") if c in base]
+    p = base[[*keep, *REUSED]].merge(fam, on=["ticker", "month"], how="left")
     p = p.merge(mkt, on=["ticker", "month"], how="left")
     p["target_end"] = p["risk_target_end"]
     return p

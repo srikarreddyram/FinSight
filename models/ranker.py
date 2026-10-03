@@ -1,6 +1,6 @@
 """Return ranker (platform PRD, Module 5): LightGBM LambdaRank on the monthly signal ranks, walk-forward.
 
-    uv run python -m models.ranker                    # on data/study/sp500/panel.parquet (build it with models.study)
+    uv run python -m models.ranker                    # on the study panel (build it with models.study)
     uv run python -m models.ranker --first-test-year 2015
 
 Each month is one ranking query; the label is the stock's quintile of 12-month excess return, within the month
@@ -27,7 +27,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from models import THREADS
+from models import STUDY_DIR, THREADS
 from models.walkforward import folds, rank_ic_by_month
 
 log = logging.getLogger(__name__)
@@ -154,11 +154,7 @@ def walk_forward(
         config, val_ic = tune(train, features)
         chosen = select(train, features, config.top_k)
         model = _fit_lgbm(train, chosen, config.grid, config.target)
-        out = (
-            test[["month", "ticker", "sector", "excess_ret"]].copy()
-            if "sector" in test
-            else test[["month", "ticker", "excess_ret"]].copy()
-        )
+        out = test[[c for c in ("month", "ticker", "sector", "tier", "excess_ret") if c in test]].copy()
         out["year"] = fold.year
         out["pred_lgbm"] = model.predict(test[chosen])
         ics = feature_ics(train, features)
@@ -191,7 +187,7 @@ def ic_table(preds: pd.DataFrame) -> pd.DataFrame:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--panel", default="data/study/sp500/panel.parquet", type=Path)
+    ap.add_argument("--panel", default=STUDY_DIR / "panel.parquet", type=Path)
     ap.add_argument("--first-test-year", default=2015, type=int)
     ap.add_argument(
         "--last-test-year", default=2024, type=int,
@@ -207,6 +203,10 @@ def main() -> None:
     preds.to_parquet(args.panel.parent / "predictions.parquet")
     with pd.option_context("display.width", 200, "display.float_format", "{:.3f}".format):
         print(ic_table(preds))
+        if "tier" in preds and preds["tier"].nunique() > 1:
+            for t, g in preds.groupby("tier"):
+                print(f"\nWithin {t}:")
+                print(ic_table(g))
 
 
 if __name__ == "__main__":

@@ -1,7 +1,7 @@
 """Vectorised monthly backtest (platform PRD, Module 5): long the top fraction of each month's ranking, short the
 bottom, equal-weight, rebalanced monthly, one-month hold.
 
-    uv run python -m models.backtest                  # on data/study/sp500/predictions.parquet (from models.ranker)
+    uv run python -m models.backtest                  # on the study's predictions.parquet (from models.ranker)
     uv run python -m models.backtest --q 0.1 --cost-bps 10
 
 Positions are formed at the close of month-end t, when every feature was already public (info_date <= t),
@@ -20,6 +20,7 @@ import duckdb
 import numpy as np
 import pandas as pd
 
+from models import STUDY_DIR
 from models.panel import Returns, add_months
 from warehouse import db
 
@@ -80,7 +81,7 @@ def report(bt: pd.DataFrame) -> pd.DataFrame:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--predictions", default="data/study/sp500/predictions.parquet", type=Path)
+    ap.add_argument("--predictions", default=STUDY_DIR / "predictions.parquet", type=Path)
     ap.add_argument("--q", default=0.1, type=float, help="fraction of names in each leg")
     ap.add_argument("--cost-bps", default=10.0, type=float)
     args = ap.parse_args()
@@ -92,6 +93,11 @@ def main() -> None:
         for pred in [c for c in p.columns if c.startswith("pred_")]:
             print(f"\n{pred}  (q={args.q}, {args.cost_bps:g} bps)")
             print(report(backtest(rows, pred, args.q, args.cost_bps)))
+        if "tier" in rows and rows["tier"].nunique() > 1:  # the same portfolios formed inside one index at a time
+            for t, g in rows.groupby("tier"):
+                for pred in ("pred_lgbm", "pred_linear"):
+                    print(f"\n{pred} within {t}  (q={args.q}, {args.cost_bps:g} bps)")
+                    print(report(backtest(g, pred, args.q, args.cost_bps)))
 
 
 if __name__ == "__main__":

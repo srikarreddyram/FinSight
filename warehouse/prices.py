@@ -114,6 +114,7 @@ def main() -> None:
     ap.add_argument("tickers", nargs="*")
     ap.add_argument("--track", help="all companies from this manifest track (e.g. financebench)")
     ap.add_argument("--universe", action="store_true", help="every company in the universe table")
+    ap.add_argument("--missing-only", action="store_true", help="skip tickers that already have a cache file")
     args = ap.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     logging.getLogger("yfinance").setLevel(logging.CRITICAL)
@@ -125,11 +126,14 @@ def main() -> None:
     if args.universe:
         con = db.connect()
         tickers += [r[0] for r in con.execute(
-            "select ticker from companies where cik in (select cik from universe) and ticker is not null order by 1"
+            "select ticker from companies where cik in (select cik from universe) and ticker is not null "
+            "and ticker not like '%~%' order by 1"  # a "~" marks a delisted company: no history to fetch
         ).fetchall()]  # fmt: skip
         con.close()
     missing = []
     for t in dict.fromkeys(t.upper() for t in tickers):
+        if args.missing_only and (cache_dir() / f"{t}.parquet").exists():
+            continue
         try:
             n = update(t)
         except Exception as e:  # one bad ticker shouldn't stop the batch

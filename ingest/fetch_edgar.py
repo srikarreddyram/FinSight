@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import subprocess
 import time
 from datetime import date, timedelta
@@ -42,12 +43,29 @@ class Edgar:
         )
         self._last = 0.0
 
-    def get(self, url: str) -> httpx.Response:
-        wait = 0.15 - (time.time() - self._last)  # SEC allows 10 requests/second
+    RETRY_WAITS = (5, 30, 120)  # seconds, after a dropped connection, a 429 or a server error
+    # SEC allows 10 requests/second in total; a second job running beside a load should set this higher.
+    interval = float(os.environ.get("FINSIGHT_SEC_INTERVAL", "0.15"))
+
+    def _once(self, url: str) -> httpx.Response:
+        wait = self.interval - (time.time() - self._last)
         if wait > 0:
             time.sleep(wait)
         self._last = time.time()
-        r = self.http.get(url)
+        return self.http.get(url)
+
+    def get(self, url: str) -> httpx.Response:
+        for pause in (*self.RETRY_WAITS, None):
+            try:
+                r = self._once(url)
+            except httpx.TransportError:
+                if pause is None:
+                    raise
+            else:
+                if pause is None or (r.status_code != 429 and r.status_code < 500):
+                    break
+            log.warning("retrying %s in %ds", url, pause)
+            time.sleep(pause)
         if r.status_code == 403:
             raise SystemExit(
                 "SEC returned 403: FINSIGHT_SEC_USER_AGENT must include a contact email, e.g. 'FinSight research you@example.com'"

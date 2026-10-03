@@ -1,6 +1,6 @@
 """Sectors from SEC SIC codes, mapped to 11 GICS-like sectors (GICS itself is licensed; SIC is free).
 
-    uv run python -m warehouse.sectors          # every company in the warehouse
+    uv run python -m warehouse.sectors          # every company in the warehouse without a sector yet
 
 The mapping is by SIC range, so it follows what a company makes rather than how index providers classify it.
 Known differences from GICS among the FinanceBench names: 3M files under 3841 (surgical instruments, so Health
@@ -66,8 +66,12 @@ def fetch() -> None:
         raise SystemExit('Set FINSIGHT_SEC_USER_AGENT in .env, e.g. "FinSight research you@example.com" (SEC requires it)')
     edgar = Edgar(s.sec_user_agent)
     con = db.connect()
-    for cik, ticker in con.execute("select cik, ticker from companies order by ticker").fetchall():
-        doc = edgar.get(SUBMISSIONS_URL.format(cik=cik)).json()
+    for cik, ticker in con.execute("select cik, ticker from companies where sector is null order by ticker").fetchall():
+        try:
+            doc = edgar.get(SUBMISSIONS_URL.format(cik=cik)).json()
+        except Exception as e:  # noqa: BLE001  (no submissions file)
+            log.warning("%s (CIK %d): %s", ticker, cik, e)
+            continue
         sic = int(doc["sic"]) if doc.get("sic") else SIC_OVERRIDES.get(cik)
         con.execute("update companies set sic = ?, sector = ? where cik = ?", [sic, sector(sic), cik])
         log.info("%-5s SIC %s (%s) -> %s", ticker, sic, doc.get("sicDescription"), sector(sic))

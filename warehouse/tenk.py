@@ -6,6 +6,9 @@
 The primary document is split into Items with `sections.split_10k`. Some companies put MD&A (Item 7) in
 Exhibit 13, the annual report to shareholders, and the 10-K only says "incorporated by reference"; for those
 the MD&A is cut out of the exhibit instead. Filings already in `filing_text` are skipped, so a run resumes.
+With --universe, each company's 10-Ks are fetched only for the years the study can use them: from two and a
+half years before it first joined an index (the text signals compare a filing with the one before it) to a
+year after it last left.
 Each filing is also recorded in `filings` with its filing date, which is when its text became public.
 """
 
@@ -16,7 +19,7 @@ import logging
 import math
 import re
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 
 import duckdb
 
@@ -28,6 +31,8 @@ log = logging.getLogger(__name__)
 
 FORMS = ("10-K", "10-K405")
 MIN_MDA_WORDS = 500  # below this, Item 7 is a cross-reference to Exhibit 13
+LEAD = timedelta(days=913)  # 10-Ks wanted before a company's first month as an index member
+TAIL = timedelta(days=365)  # and after its last
 INDEX_URL = "https://www.sec.gov/Archives/edgar/data/{cik}/{acc}/{accn}-index.htm"
 OLDER_URL = "https://data.sec.gov/submissions/{name}"
 
@@ -142,6 +147,17 @@ def fetch_filing(edgar, cik: int, f: Filing) -> dict[str, Section]:
     return sections
 
 
+def windows(con: duckdb.DuckDBPyConnection, since: date) -> dict[int, tuple[date, date]]:
+    """CIK -> (first, last) filing dates worth fetching for each universe member, from its membership stays.
+    A stay with no start date began before the study did, so it gets the full history."""
+    rows = con.execute(
+        "select cik, min(coalesce(start_date, date '1900-01-01')), max(coalesce(end_date, date '9999-12-31')) "
+        "from universe group by cik"
+    ).fetchall()
+    return {cik: (max(since, first - LEAD), min(date.max, last + TAIL) if last.year < 9999 else date.max)
+            for cik, first, last in rows}  # fmt: skip
+
+
 def fetch(
     con: duckdb.DuckDBPyConnection, tickers: list[str] | None, since: date, universe: bool = False, items: set[str] | None = None
 ) -> None:
@@ -157,13 +173,19 @@ def fetch(
     if tickers:
         companies = [(c, t) for c, t in companies if t in tickers]
     done = {r[0] for r in con.execute("select distinct accn from filing_text").fetchall()}
+    wanted = windows(con, since) if universe else {}
     for cik, ticker in companies:
-        sub = edgar.get(SUBMISSIONS_URL.format(cik=cik)).json()
-        older = [edgar.get(OLDER_URL.format(name=p["name"])).json() for p in sub["filings"].get("files", [])
-                 if date.fromisoformat(p["filingTo"]) >= since]  # fmt: skip
-        filings = list_10ks(sub, older, since)
+        first, last = wanted.get(cik, (since, date.max))  # predecessors have no stays: the whole history
+        try:
+            sub = edgar.get(SUBMISSIONS_URL.format(cik=cik)).json()
+            older = [edgar.get(OLDER_URL.format(name=p["name"])).json() for p in sub["filings"].get("files", [])
+                     if date.fromisoformat(p["filingTo"]) >= first]  # fmt: skip
+        except Exception as e:  # a filer with no submissions file shouldn't stop the run
+            log.warning("%s (CIK %d): %s", ticker, cik, e)
+            continue
+        filings = [f for f in list_10ks(sub, older, first) if f.filed_at <= last]
         new = [f for f in filings if f.accn not in done]
-        log.info("%s: %d 10-Ks since %s, %d to fetch", ticker, len(filings), since, len(new))
+        log.info("%s: %d 10-Ks since %s, %d to fetch", ticker, len(filings), first, len(new))
         for f in new:
             try:
                 sections = fetch_filing(edgar, cik, f)

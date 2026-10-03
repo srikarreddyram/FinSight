@@ -1,9 +1,12 @@
-"""The research universe: S&P 500 members since 2010, including companies later removed (platform PRD).
+"""The research universe: S&P 500, 400 and 600 members, including companies later removed (platform PRD).
 
     uv run python -m warehouse.universe            # rebuild the `universe` table and add new companies
+    uv run python -m warehouse.universe --dry-run  # only report what the rebuild would give
 
-Membership is rebuilt from Wikipedia: today's constituents (with CIKs) plus the dated table of additions and
-removals, walked backwards from today. It runs on CIKs, not tickers: tickers get renamed (FB -> META) and reused
+Membership is rebuilt from Wikipedia, one index at a time: today's constituents plus the dated table of
+additions and removals, walked backwards from today. Each index goes back only as far as its change log is
+complete (INDEXES): 2010 for the S&P 500, 2016 for the 400 and 2020 for the 600. Before that date a company
+is not counted as a member of that index, because who belonged then isn't known. It runs on CIKs, not tickers: tickers get renamed (FB -> META) and reused
 (IR was Ingersoll-Rand, now Trane; today's IR is a different company). Each company counts its share lines, so
 GOOG joining in 2014 doesn't make Alphabet leave when the change is undone.
 
@@ -12,12 +15,13 @@ used (so "Facebook" finds Meta's CIK). A name shared by several filers (a parent
 the one that filed 10-Ks around the change date. Anything unresolved is logged and left out.
 
 Known limits: Wikipedia's change log is volunteer-maintained; its 2010-01-01 membership comes out within a few
-names of 500. Yahoo has no prices for most acquired companies, so survivorship bias is reduced, not removed
-(see the PRD's risks).
+names of 500. Yahoo has no prices for delisted companies, so a member that was later acquired or went bankrupt
+has features but no returns: survivorship bias is reduced, not removed (see the PRD's risks).
 """
 
 from __future__ import annotations
 
+import argparse
 import io
 import json
 import logging
@@ -36,11 +40,28 @@ from warehouse import db
 
 log = logging.getLogger(__name__)
 
-CURRENT_URL = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
-CHANGES_URL = "https://en.wikipedia.org/wiki/Historical_components_of_the_S%26P_500"
+WIKI = "https://en.wikipedia.org/wiki/"
 CIK_NAMES_URL = "https://www.sec.gov/Archives/edgar/cik-lookup-data.txt"
 WIKI_HEADERS = {"User-Agent": "FinSight/0.1 (student research project)"}  # no contact email: that is for SEC only
 HISTORY_START = date(2010, 1, 1)
+
+
+@dataclass(frozen=True)
+class Index:
+    name: str
+    page: str  # Wikipedia page with today's constituents (first table)
+    changes_page: str  # page whose table `changes_table` is the dated change log
+    changes_table: int
+    start: date  # membership is rebuilt back to here and not before
+
+
+# Start dates follow the change logs. The 400's log reaches 2012 but lists 16 to 25 changes a year before
+# 2016 against 40 to 60 after, so its early years are incomplete; the 600's log begins in December 2019.
+INDEXES = (
+    Index("sp500", "List_of_S%26P_500_companies", "Historical_components_of_the_S%26P_500", 0, HISTORY_START),
+    Index("sp400", "List_of_S%26P_400_companies", "List_of_S%26P_400_companies", 1, date(2016, 1, 1)),
+    Index("sp600", "List_of_S%26P_600_companies", "List_of_S%26P_600_companies", 1, date(2020, 1, 1)),
+)
 
 
 # Wikipedia's name for a company -> the name it filed under with the SEC, where they differ by more than a suffix.
@@ -51,6 +72,10 @@ SEC_NAMES = {
     "JCPenney": "Penney J C Co",
     "Suntory Global Spirits": "Beam Inc",
     "QuintilesIMS": "Quintiles IMS Holdings",
+    "U.S. Steel": "United States Steel",
+    "Aimco": "Apartment Investment & Management",
+    "San Jose Water Group": "SJW Group",
+    "Hillrom": "Hill-Rom Holdings",
 }
 # Old tickers whose row in the change log can't be told apart by name: DowDuPont (DWDP, 2017-2019) appears as
 # "DuPont", the same name as the company it replaced.
@@ -92,6 +117,7 @@ class Stay:
     name: str
     start: date | None  # None: already a member when the history starts
     end: date | None  # None: still a member
+    index: str = "sp500"
 
 
 def ticker(s) -> str | None:
@@ -109,6 +135,7 @@ _SUFFIX = re.compile(
 
 def norm_name(name: str) -> str:
     n = name.lower().replace("&", " and ").replace("21st", "twenty first")
+    n = re.sub(r"['’]s\b", "s", n)  # "Sotheby's" files as SOTHEBYS, "Macy's" as MACY'S: both become one word
     n = re.sub(r"\(.*?\)", " ", n)
     n = re.sub(r"\b(class|series)\s+[a-z]\b(\s+special)?", " ", n)  # share classes: "Fox Class B", "Comcast Series K"
     n = re.sub(r"/[^/]*/?\s*$", " ", n)  # SEC state and status tags: "AETNA INC /PA/", "DUN & BRADSTREET CORP/NW"
@@ -118,10 +145,16 @@ def norm_name(name: str) -> str:
 
 
 def reconstruct(
-    current: dict[str, int], changes: list[Change], resolve, start: date = HISTORY_START, links: list | None = None
+    current: dict[str, int],
+    changes: list[Change],
+    resolve,
+    start: date = HISTORY_START,
+    links: list | None = None,
+    unmatched: list | None = None,
 ) -> list[Stay]:
     """Membership stays since `start`. current: ticker -> CIK today.
-    resolve(ticker, name, day, removal) -> CIK | None.
+    resolve(ticker, name, day, removal) -> CIK | None. An addition that resolves to a company with no share
+    line to take is skipped and, if `unmatched` is given, recorded there as (CIK, day).
 
     A company that reorganised under a new CIK (BlackRock 2024, Broadcom, Perrigo) is added under its old CIK
     but is a member today under the new one; its stay goes to today's CIK and (new, old, day) is appended to
@@ -167,6 +200,8 @@ def reconstruct(
                 cik = successor
             if cik is None:
                 log.warning("%s: added %s (%s) is not a member when walking back; skipped", day, ch.added, ch.added_name)
+                if unmatched is not None and cands:
+                    unmatched.append((cands[0], day))
                 continue
             taken[cik] += 1
             lines[cik] -= 1
@@ -203,6 +238,7 @@ class Resolver:
                 self.by_token[t].add(cik)
         self._filings: dict[int, list[date]] = {}
         self.cache: dict[tuple, list[int]] = {}
+        self.failed = 0  # lookups that failed for a reason other than "no such filer": never cached
         self.cache_path: Path | None = None
 
     def load_cache(self, path: Path) -> None:
@@ -226,14 +262,22 @@ class Resolver:
                     self.edgar.get(f"https://data.sec.gov/submissions/{p['name']}").json()
                     for p in sub["filings"].get("files", [])
                 ]
-                self._filings[cik] = [
-                    date.fromisoformat(d)
-                    for b in blocks
-                    for f, d in zip(b["form"], b["filingDate"], strict=True)
-                    if f in ("10-K", "10-K405")
-                ]
-            except Exception:  # noqa: BLE001  (no submissions file: not a filer we can use)
-                self._filings[cik] = []
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code != 404:  # anything but "no such filer" is a failed lookup, not an answer
+                    self.failed += 1
+                    log.warning("CIK %d: submissions lookup failed (%s); treated as no 10-Ks this run", cik, e)
+                    return []
+                blocks = []
+            except httpx.TransportError as e:
+                self.failed += 1
+                log.warning("CIK %d: submissions lookup failed (%s); treated as no 10-Ks this run", cik, e)
+                return []
+            self._filings[cik] = [
+                date.fromisoformat(d)
+                for b in blocks
+                for f, d in zip(b["form"], b["filingDate"], strict=True)
+                if f in ("10-K", "10-K405")
+            ]
         return self._filings[cik]
 
     def _near(self, cik: int, day: date, before: bool = False) -> int:
@@ -244,8 +288,16 @@ class Resolver:
         words = norm_name(name).split()
         if first_word_only:
             words = words[:1] if words and len(words[0]) >= 5 else []
-        # Initials run together ("CR Bard") match SEC's spaced-out form ("BARD C R INC").
-        words = {w2 for w in words for w2 in (list(w) if 2 <= len(w) <= 3 and not re.search(r"[aeiouy]", w) else [w])}
+        # Initials run together ("CR Bard") match SEC's spaced-out form ("BARD C R INC"); tried only when the
+        # words as written find nothing, since "CSG Systems" and "SJW Group" file under exactly those letters.
+        spaced = {w2 for w in words for w2 in (list(w) if 2 <= len(w) <= 3 and not re.search(r"[aeiouy]", w) else [w])}
+        for variant in dict.fromkeys((frozenset(words), frozenset(spaced))):
+            found = self._with_words(set(variant), first_word_only)
+            if found:
+                return found
+        return []
+
+    def _with_words(self, words: set[str], first_word_only: bool) -> list[int]:
         if not words:
             return []
         cands = set.intersection(*(self.by_token.get(w, set()) for w in words))
@@ -274,14 +326,25 @@ class Resolver:
             self.cache[key] = self._candidates(tk, name, day, removal)
         return self.cache[key]
 
+    def _named(self, cik: int, name: str | None) -> bool:
+        """Whether any name the filer has used shares a word with `name` (true when either is unknown)."""
+        words = set(norm_name(SEC_NAMES.get(name, name)).split()) if name else set()
+        return not words or cik not in self.tokens or any(words & t for t in self.tokens[cik])
+
     def _candidates(self, tk: str | None, name: str | None, day: date, removal: bool = False) -> list[int]:
         if tk in HISTORICAL_TICKERS:
             return [HISTORICAL_TICKERS[tk]]
+        by_ticker: list[int] = []
         for cik in dict.fromkeys(c for c in (self.current.get(tk), self.sec_tickers.get(tk)) if c):
             # A company added before its first 10-K (a fresh spin-off) has no filings to check against; a reused
             # ticker's new owner always has some, just not near the date.
             if self._near(cik, day, removal) or (not removal and not self.ten_k_dates(cik)):
-                return [cik]
+                if self._named(cik, name):
+                    return [cik]
+                # A ticker can pass between two companies that were both filing at the time (WTW was Weight
+                # Watchers until 2019 and is Willis Towers Watson now; CPWR and EP belong to shells today), so
+                # a holder with an unrelated name is not the only candidate: the name search adds its own.
+                by_ticker = by_ticker or [cik]
         name = SEC_NAMES.get(name, name)
         groups = (
             lambda: sorted(self.by_name.get(norm_name(name), ())),
@@ -294,18 +357,32 @@ class Resolver:
             out += [c for n, c in scored if n]
             if out:  # a closer kind of match wins outright; fuzzier groups only fill in when it found nothing
                 break
-        return out
+        if not by_ticker:
+            return out
+        # Against a ticker holder with an unrelated name. A removal takes its first candidate, and a filer that
+        # matches the row's name is the likelier one (COR was CoreSite Realty and is Cencora now); where the row
+        # uses a brand name that only a subsidiary files under ("Aimco"), SEC_NAMES gives the legal name. An
+        # addition takes the first candidate with a share line to give, so the holder can stay first.
+        rest = [c for c in out if c not in by_ticker]
+        return rest + by_ticker if removal else by_ticker + rest
 
 
 def find_predecessors(
-    resolver: Resolver, stays: list[Stay], company_names: dict[int, str] | None = None, since: date = HISTORY_START
+    resolver: Resolver,
+    stays: list[Stay],
+    company_names: dict[int, str] | None = None,
+    since: date = HISTORY_START,
+    hints: tuple[int, ...] = (),
 ) -> tuple[list[tuple[int, int, date]], dict[int, date]]:
     """Reorganisations the index change log doesn't record: a member whose 10-Ks begin well after its membership
     did, and the company that filed them before. Returns (links, start fixes).
 
-    A predecessor must have filed 10-Ks for years and up to the successor's first one. If the predecessor was
-    itself an index member under its own ID (two constituents in sequence), nothing is linked; instead the
-    successor's open-ended start is set to the day the predecessor left."""
+    A predecessor must have filed 10-Ks for years and up to the successor's first one. It is looked for by name;
+    failing that, among `hints` (companies that were added to an index but never left it under their own ID),
+    where it must also have stopped filing as the successor began, and be the only one that did: that finds a
+    reorganisation that changed the name too (WWE became TKO). If the predecessor was itself an index member
+    under its own ID (two constituents in sequence), nothing is linked; instead the successor's open-ended start
+    is set to the day the predecessor left."""
     starts: dict[int, date] = {}
     names: dict[int, str] = {}
     ends: dict[int, date | None] = {}
@@ -325,24 +402,64 @@ def find_predecessors(
         if (first - start).days < 430:  # its own filings cover its membership
             continue
         search = PREDECESSOR_NAMES.get(cik) or SEC_NAMES.get(names.get(cik, ""), names.get(cik, ""))
-        if not search:
-            continue
-        best, best_n = None, 0
-        for c in dict.fromkeys([*sorted(resolver.by_name.get(norm_name(search), ())), *resolver._fuzzy(search)]):
-            if c == cik or c in seen:
-                continue
+
+        def filed_until(c: int, first: date = first) -> int:
+            """How many 10-Ks c filed before the successor's first one, if they ran for years and right up to it."""
             before = [d for d in resolver.ten_k_dates(c) if d < first]
-            if len(before) >= 3 and (first - max(before)).days <= 550 and len(before) > best_n:
-                best, best_n = c, len(before)
+            return len(before) if len(before) >= 3 and (first - max(before)).days <= 550 else 0
+
+        by_name = [*sorted(resolver.by_name.get(norm_name(search), ())), *resolver._fuzzy(search)] if search else []
+        scored = {c: filed_until(c) for c in dict.fromkeys(by_name) if c != cik and c not in seen}
+        best = max(scored, key=scored.get) if any(scored.values()) else None
         if best is None:
-            continue
+            search = None
+            handed_over = [
+                c for c in dict.fromkeys(hints)
+                if c != cik and c not in seen and filed_until(c) and (max(resolver.ten_k_dates(c)) - first).days < 200
+            ]  # fmt: skip
+            if len(handed_over) != 1:
+                continue
+            best = handed_over[0]
         if best in starts and best in ends and ends[best] is not None:  # both were constituents, one after the other
             fixes[cik] = ends[best]
             continue
         links.append((cik, best, first))
-        names[best] = search
+        if search:
+            names[best] = search
         queue.append(best)
     return links, fixes
+
+
+def close_open_starts(
+    stays: list[Stay],
+    is_open: list[bool],
+    links: list[tuple[int, int, date]],
+    fixes: dict[int, date],
+    unmatched: dict[str, list[tuple[int, date]]],
+) -> list[Stay]:
+    """Start dates for stays the walk back left open (`is_open`), which normally means "a member since before
+    the history". A company that reorganised under a new SEC ID while a member has no addition under that ID:
+    it joined either on the day its predecessor left an index (`fixes`, from find_predecessors) or on the day
+    the predecessor was added to this one (an unmatched addition of a company it is linked to)."""
+    preds: dict[int, set[int]] = defaultdict(set)
+    for successor, predecessor, _ in links:
+        preds[successor].add(predecessor)
+    out = []
+    for x, open_ in zip(stays, is_open, strict=True):
+        day = fixes.get(x.cik) if open_ else None
+        if open_ and day is None:
+            line, queue = set(), [x.cik]
+            while queue:  # predecessors of predecessors too (Viatris <- Mylan N.V. <- Mylan Inc)
+                for p in preds.get(queue.pop(), ()):
+                    if p not in line:
+                        line.add(p)
+                        queue.append(p)
+            days = [d for c, d in unmatched.get(x.index, ()) if c in line and (x.end is None or d < x.end)]
+            day = max(days, default=None)
+        if day is not None and (x.end is None or day < x.end) and (x.start is None or day > x.start):
+            x = Stay(x.cik, x.ticker, x.name, day, x.end, x.index)
+        out.append(x)
+    return out
 
 
 def primary_tickers(wiki: list[tuple[str, int, str]], sec: list[tuple[str, int]]) -> dict[int, str]:
@@ -357,23 +474,70 @@ def primary_tickers(wiki: list[tuple[str, int, str]], sec: list[tuple[str, int]]
     return out
 
 
-def _wiki_tables() -> tuple[pd.DataFrame, pd.DataFrame]:
-    get = lambda url: httpx.get(url, headers=WIKI_HEADERS, follow_redirects=True, timeout=60).text  # noqa: E731
-    current = pd.read_html(io.StringIO(get(CURRENT_URL)), flavor="lxml")[0]
-    changes = pd.read_html(io.StringIO(get(CHANGES_URL)), flavor="lxml")[0]
-    changes.columns = ["date", "added", "added_name", "removed", "removed_name", "reason", "refs"]
-    return current, changes
+def parse_changes(table: pd.DataFrame) -> list[Change]:
+    """A Wikipedia change-log table (date, added ticker and name, removed ticker and name, ...) as Changes.
+    Dates can carry a footnote mark ("August 9, 2019[186]")."""
+    out = []
+    for r in table.iloc[:, :5].itertuples(index=False):
+        day = pd.to_datetime(re.sub(r"\[.*?\]", "", str(r[0])).strip(), errors="coerce")
+        if pd.isna(day):
+            log.warning("change log row with unreadable date %r; skipped", r[0])
+            continue
+        name = lambda v: v if isinstance(v, str) else None  # noqa: E731
+        out.append(Change(day.date(), ticker(r[1]), name(r[2]), ticker(r[3]), name(r[4])))
+    return out
 
 
-def build(con: duckdb.DuckDBPyConnection) -> list[Stay]:
+def stored_ticker(cik: int, label: str, listed: dict[int, str]) -> str:
+    """The ticker a company is stored and priced under. A company SEC still lists uses its symbol there. One
+    that is gone keeps its last symbol with its CIK appended (KG~1047699): the bare symbol may have passed to
+    another company since (KG, DELL, FOX), and Yahoo keeps no history for delisted shares, so whatever it returns
+    for the old symbol is someone else's price. Nothing is ever fetched for a symbol with a "~"."""
+    return listed.get(cik) or f"{label}~{cik}"
+
+
+def _wiki_tables(index: Index) -> tuple[pd.DataFrame, pd.DataFrame]:
+    get = lambda page: httpx.get(WIKI + page, headers=WIKI_HEADERS, follow_redirects=True, timeout=60).text  # noqa: E731
+    html = get(index.page)
+    current = pd.read_html(io.StringIO(html), flavor="lxml")[0]
+    changes_html = html if index.changes_page == index.page else get(index.changes_page)
+    return current, pd.read_html(io.StringIO(changes_html), flavor="lxml")[index.changes_table]
+
+
+def constituents(table: pd.DataFrame, sec_tickers: dict[str, int], index: str) -> list[tuple[str, int, str]]:
+    """(ticker, CIK, name) for today's members. The S&P 400 page has no CIK column, so its CIKs come from
+    SEC's ticker list."""
+    out = []
+    for i, (sym, name) in enumerate(zip(table["Symbol"], table["Security"], strict=True)):
+        t = ticker(sym)
+        cik = int(table["CIK"].iloc[i]) if "CIK" in table.columns else sec_tickers.get(t)
+        if cik is None:
+            log.warning("%s: %s (%s) has no CIK in SEC's ticker list; left out", index, t, name)
+            continue
+        out.append((t, cik, name))
+    return out
+
+
+@dataclass
+class Built:
+    stays: list[Stay]
+    links: list[tuple[int, int, date]]
+    tickers: dict[int, str]  # CIK -> the ticker to price it with
+    names: dict[int, str]  # CIK -> display name, for today's members
+    sec_names: dict[int, str]  # CIK -> a name from SEC's list, for everyone else
+
+
+def compute() -> Built:
+    """Membership stays and predecessor links, from Wikipedia and EDGAR. Writes nothing but the 10-K date cache."""
     from ingest.fetch_edgar import TICKERS_URL, Edgar
 
     s = get_settings()
     edgar = Edgar(s.sec_user_agent)
-    current_df, changes_df = _wiki_tables()
-    current = {ticker(t): int(c) for t, c in zip(current_df["Symbol"], current_df["CIK"], strict=True)}
     sec_rows = list(edgar.get(TICKERS_URL).json().values())
-    sec_tickers = {ticker(v["ticker"]): int(v["cik_str"]) for v in sec_rows}
+    sec = [(ticker(v["ticker"]), int(v["cik_str"])) for v in sec_rows]
+    sec_tickers: dict[str, int] = {}
+    for t, cik in sec:
+        sec_tickers.setdefault(t, cik)
     cache = Path(s.data_dir) / "cache" / "cik-lookup-data.txt"
     if not cache.exists():
         cache.write_bytes(edgar.get(CIK_NAMES_URL).content)
@@ -382,65 +546,104 @@ def build(con: duckdb.DuckDBPyConnection) -> list[Stay]:
         name, _, rest = line.rpartition(":")[0].rpartition(":")
         if name and rest.isdigit():
             cik_names.append((name, int(rest)))
-    changes = [
-        Change(pd.Timestamp(r.date).date(), ticker(r.added), r.added_name if isinstance(r.added_name, str) else None,
-               ticker(r.removed), r.removed_name if isinstance(r.removed_name, str) else None)
-        for r in changes_df.itertuples()
-    ]  # fmt: skip
+    pages = {}
+    for idx in INDEXES:
+        current_df, changes_df = _wiki_tables(idx)
+        pages[idx.name] = (constituents(current_df, sec_tickers, idx.name), parse_changes(changes_df))
+    wiki = [row for idx in INDEXES for row in pages[idx.name][0]]
     links: list[tuple[int, int, date]] = []
-    resolver = Resolver(edgar, current, sec_tickers, cik_names)
+    # Ticker lookups see every index's members, so a company that moved between indexes resolves either way.
+    resolver = Resolver(edgar, {t: cik for t, cik, _ in reversed(wiki)}, sec_tickers, cik_names)
     resolver.load_cache(cache.parent / "ten_k_dates.json")
-    wiki = [
-        (ticker(t), int(c), n) for t, c, n in zip(current_df["Symbol"], current_df["CIK"], current_df["Security"], strict=True)
-    ]
-    trading = primary_tickers(wiki, [(ticker(v["ticker"]), int(v["cik_str"])) for v in sec_rows])
     wiki_names: dict[int, str] = {}
     for _, cik, name in wiki:
         wiki_names.setdefault(cik, re.sub(r"\s*\((?:Class|Series) \w+\)$", "", name))
+    stays: list[Stay] = []
+    is_open: list[bool] = []
+    unmatched: dict[str, list[tuple[int, date]]] = {}
     try:
-        stays = reconstruct(current, changes, resolver, links=links)
-        found, fixes = find_predecessors(resolver, stays, wiki_names)
+        for idx in INDEXES:
+            members, changes = pages[idx.name]
+            unmatched[idx.name] = []
+            found = reconstruct(
+                {t: cik for t, cik, _ in members}, changes, resolver, start=idx.start, links=links, unmatched=unmatched[idx.name]
+            )
+            # Only the S&P 500's history covers the whole study, so only its members can predate the start.
+            first = None if idx.start == HISTORY_START else idx.start
+            stays += [Stay(x.cik, x.ticker, x.name, x.start or first, x.end, idx.name) for x in found]
+            is_open += [x.start is None for x in found]
+            log.info("%s: %d stays from %d current members and %d changes", idx.name, len(found), len(members), len(changes))
+        hints = tuple(c for rows in unmatched.values() for c, _ in rows)
+        found_links, fixes = find_predecessors(resolver, stays, wiki_names, hints=hints)
     finally:
         resolver.save_cache()
-    stays = [Stay(x.cik, x.ticker, x.name, fixes[x.cik], x.end) if x.start is None and x.cik in fixes else x for x in stays]
-    links = list({(a, b): (a, b, d) for a, b, d in [*links, *found]}.values())
+    links = list({(a, b): (a, b, d) for a, b, d in [*links, *found_links]}.values())
+    stays = close_open_starts(stays, is_open, links, fixes, unmatched)
+    log.info("%d predecessor links, %d start fixes", len(links), len(fixes))
+    if resolver.failed:
+        log.warning("%d SEC lookups failed; companies resolved through them may be missing. Run again.", resolver.failed)
     sec_name: dict[int, str] = {}
     for name, cik in cik_names:
         sec_name.setdefault(cik, name.title())
+    return Built(stays, links, primary_tickers(wiki, sec), wiki_names, sec_name)
+
+
+def build(con: duckdb.DuckDBPyConnection, built: Built | None = None) -> list[Stay]:
+    b = built or compute()
     con.execute("delete from cik_links")
-    con.executemany("insert into cik_links values (?, ?, ?)", links)
-    for _, pred, _ in links:  # a predecessor gets a row so the loaders fetch its filings; it has no ticker of its own
-        con.execute("insert into companies (cik, name) values (?, ?) on conflict (cik) do nothing", [pred, sec_name.get(pred)])
-    log.info("%d predecessor links, %d start fixes", len(links), len(fixes))
+    con.executemany("insert into cik_links values (?, ?, ?)", b.links)
+    for _, pred, _ in b.links:  # a predecessor gets a row so the loaders fetch its filings; it has no ticker of its own
+        con.execute("insert into companies (cik, name) values (?, ?) on conflict (cik) do nothing", [pred, b.sec_names.get(pred)])
     con.execute("delete from universe")
     con.executemany(
-        "insert into universe values (?, ?, ?, ?, ?, 'wikipedia')", [(x.cik, x.ticker, x.name, x.start, x.end) for x in stays]
+        "insert into universe (cik, ticker, name, start_date, end_date, source, index_name) values (?, ?, ?, ?, ?, 'wikipedia', ?)",
+        [(x.cik, x.ticker, x.name, x.start, x.end, x.index) for x in b.stays],
     )
-    for x in stays:
+    for x in b.stays:
         con.execute(
             "insert into companies (cik, ticker, name) values (?, ?, ?) "
             "on conflict (cik) do update set ticker = excluded.ticker, name = excluded.name",
-            [x.cik, trading.get(x.cik, x.ticker), wiki_names.get(x.cik, x.name)],
+            [x.cik, stored_ticker(x.cik, x.ticker, b.tickers), b.names.get(x.cik, x.name)],
         )
-    return stays
+    return b.stays
 
 
-def members_on(con: duckdb.DuckDBPyConnection, day: date) -> list[int]:
+def count_on(stays: list[Stay], day: date, index: str | None = None) -> int:
+    """Distinct members on `day` (of one index, or of any), from stays in memory."""
+    return len({
+        x.cik for x in stays
+        if (x.start is None or x.start <= day) and (x.end is None or x.end > day) and index in (None, x.index)
+    })  # fmt: skip
+
+
+def members_on(con: duckdb.DuckDBPyConnection, day: date, index: str | None = None) -> list[int]:
+    """CIKs that were members on `day`: of one index, or of any when index is None."""
     return [r[0] for r in con.execute(
-        "select distinct cik from universe where coalesce(start_date, date '1900-01-01') <= ? and (end_date is null or end_date > ?)",
-        [day, day],
+        "select distinct cik from universe where coalesce(start_date, date '1900-01-01') <= ? and (end_date is null or end_date > ?)"
+        " and (? is null or index_name = ?)",
+        [day, day, index, index],
     ).fetchall()]  # fmt: skip
 
 
 def main() -> None:
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--dry-run", action="store_true", help="rebuild membership and report it, without touching the warehouse")
+    ap.add_argument("--dump", type=Path, help="also write the stays to this CSV")
+    args = ap.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     logging.getLogger("httpx").setLevel(logging.WARNING)
-    con = db.connect()
-    stays = build(con)
-    for d in (date(2010, 1, 4), date(2015, 6, 30), date(2020, 6, 30), date.today()):
-        log.info("members on %s: %d", d, len(members_on(con, d)))
+    built = compute()
+    stays = built.stays
+    if not args.dry_run:
+        con = db.connect()
+        build(con, built)
+        con.close()
+    if args.dump:
+        pd.DataFrame(stays).sort_values(["index", "cik", "end"]).to_csv(args.dump, index=False)
+    for d in (date(2010, 1, 4), date(2016, 6, 30), date(2020, 6, 30), date(2023, 6, 30), date.today()):
+        counts = {idx.name: count_on(stays, d, idx.name) for idx in INDEXES}
+        log.info("members on %s: %s, %d in all", d, counts, count_on(stays, d))
     log.info("%d stays, %d companies ever in the universe since %s", len(stays), len({x.cik for x in stays}), HISTORY_START)
-    con.close()
 
 
 if __name__ == "__main__":

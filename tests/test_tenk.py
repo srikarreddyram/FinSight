@@ -86,3 +86,21 @@ def test_a_table_of_contents_entry_spanning_other_items_is_not_an_mda():
         + "\nITEM 15. EXHIBITS\nincorporated by reference into Item 8:\nConsolidated Statements of Income\n"
     )
     assert mda_from_exhibit(tenk) is None
+
+
+def test_fetch_window_follows_membership():
+    from warehouse import db
+    from warehouse.tenk import windows
+
+    con = db.connect(":memory:")
+    rows = [
+        (1, "OLD", "Member since before the study", None, None, "sp500"),
+        (2, "MID", "Joined in 2016, left in 2019", date(2016, 1, 1), date(2019, 3, 18), "sp400"),
+        (3, "TWO", "Small cap, later mid cap", date(2020, 1, 1), date(2022, 6, 20), "sp600"),
+        (3, "TWO", "Small cap, later mid cap", date(2022, 6, 20), None, "sp400"),
+    ]
+    con.executemany("insert into universe (cik, ticker, name, start_date, end_date, index_name) values (?,?,?,?,?,?)", rows)
+    w = windows(con, since=date(2009, 1, 1))
+    assert w[1] == (date(2009, 1, 1), date.max)
+    assert w[2] == (date(2013, 7, 2), date(2020, 3, 17))  # two and a half years before joining, a year after leaving
+    assert w[3] == (date(2017, 7, 2), date.max)  # still a member: every later filing

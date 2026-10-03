@@ -81,6 +81,7 @@ create table if not exists universe (
     end_date   date,
     source     varchar
 );
+alter table universe add column if not exists index_name varchar default 'sp500';  -- sp500, sp400 or sp600
 
 -- EDGAR's filing index for risk events: late-filing notices, amendments, and 8-K items (4.01 auditor change,
 -- 4.02 non-reliance on past financials). Public from filed_at + 1 day, like everything else.

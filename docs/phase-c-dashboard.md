@@ -11,10 +11,12 @@ Spec: [platform PRD, Module 6](PRD.md). The output is a ranked research watchlis
 | Confidence band | `recs/build.py` | What stocks in the same predicted decile actually returned in the walk-forward test years (quartiles of 12-month excess return) |
 | Risk components | `recs/build.py` | Realised volatility and severe-loss rate of the same predicted decile in the test years. The classifier's raw scores are class-weighted, so they are never shown as probabilities |
 | API | `recs/api.py` | `/recs/meta`, `/recs/watchlist`, `/recs/company/{ticker}`, `/recs/signals`, `/recs/backtest`, `/recs/risk`, mounted on the Copilot's FastAPI app |
-| Dashboard | `web/src/pages/` | Watchlist (filters by sector, risk grade, market cap; risk-adjusted view), Company, Signal Lab, Backtest, Risk, Methodology, behind a hash router; the Copilot stays at `/` |
+| Dashboard | `web/src/pages/` | Watchlist (filters by sector, index, risk grade, market cap; risk-adjusted view), Company, Signal Lab, Backtest, Risk, Methodology, behind a hash router; the Copilot stays at `/` |
 | Charts | `web/src/charts/` | Line, column, heatmap and stacked bars in plain SVG/HTML: crosshair or per-mark hover, keyboard focus, a legend for two or more series, and a table view of the same numbers |
 
 Run it: `uv run python -m recs.build`, `uv run uvicorn app.api:app`, and `npm run dev` in `web/`. `FINSIGHT_THREADS` caps the threads and workers the builds use (default 6; 3 keeps a laptop cool and was no slower).
+
+Since [Phase D](phase-d-universe.md) the dashboard runs on the S&P 500, 400 and 600 (about 1,500 companies): the Watchlist has an index column and filter, the Signal Lab can show the study inside one index, and the Backtest and Risk pages add a table of the same test inside each index, with the style-neutral ICs and survivorship gaps from `models/checks.py`.
 
 ## Design decisions
 

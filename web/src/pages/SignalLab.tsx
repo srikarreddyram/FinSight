@@ -5,7 +5,7 @@ import { Card, Segmented } from '../design/primitives'
 import { C, CH, F, NUM } from '../design/tokens'
 import { getSignals } from '../recs/api'
 import { num, pct } from '../recs/format'
-import type { SignalRow } from '../recs/types'
+import type { SignalRow, SignalStats } from '../recs/types'
 import { useData } from './data'
 import { Page } from './shared'
 
@@ -13,19 +13,20 @@ export function SignalLab() {
   const { data, error } = useData(getSignals)
   const [scope, setScope] = useState<'raw' | 'sector'>('raw')
   const [family, setFamily] = useState('')
+  const [index, setIndex] = useState('')
   const families = useMemo(() => [...new Set((data ?? []).map((s) => s.family))].sort(), [data])
-  const rows = useMemo(() => {
-    const ic = (s: SignalRow) => (scope === 'raw' ? s.ic_raw : s.ic_sector) ?? 0
-    return (data ?? []).filter((s) => !family || s.family === family).sort((a, b) => Math.abs(ic(b)) - Math.abs(ic(a)))
-  }, [data, family, scope])
-  const ic = (s: SignalRow) => (scope === 'raw' ? s.ic_raw : s.ic_sector) ?? 0
+  const indexes = useMemo(() => (data?.[0]?.by_index ?? []).map((b) => b.index), [data])
+  // The table's numbers: the whole universe, or the same study inside one index.
+  const stats = (s: SignalRow): SignalStats | undefined => (index ? s.by_index?.find((b) => b.index === index) : s)
+  const ic = (s: SignalRow) => (scope === 'raw' ? stats(s)?.ic_raw : stats(s)?.ic_sector) ?? 0
+  const rows = (data ?? []).filter((s) => !family || s.family === family).sort((a, b) => Math.abs(ic(b)) - Math.abs(ic(a)))
   const years = useMemo(() => [...new Set((data ?? []).flatMap((s) => s.by_year.map((y) => String(y.year))))].sort(), [data])
   const scale = Math.max(0.01, ...rows.map((s) => Math.abs(ic(s))))
 
   return (
     <Page
       title="Signal Lab"
-      lead="How well each signal, on its own, ranked stocks by their next 12 months of return relative to the S&P 500. Rank IC is the correlation between the signal’s ranking and the outcome’s: 0 is no skill, and 0.05 sustained over years is a strong single signal."
+      lead="How well each signal, on its own, ranked stocks by their next 12 months of return relative to the S&P 500. Switch indexes to see the same study among large (S&P 500), mid (S&P 400) or small (S&P 600) companies only. Rank IC is the correlation between the signal’s ranking and the outcome’s: 0 is no skill, and 0.05 sustained over years is a strong single signal."
       error={error}
       loading={!data}
     >
@@ -41,6 +42,13 @@ export function SignalLab() {
             <option key={f}>{f}</option>
           ))}
         </select>
+        {indexes.length > 1 && (
+          <Segmented
+            value={index}
+            onChange={setIndex}
+            options={[{ value: '', label: 'All indexes', title: 'Every stock-month in the universe' }, ...indexes.map((i) => ({ value: i, label: i, title: `Only months a company was in the ${i}` }))]}
+          />
+        )}
         <Segmented
           value={scope}
           onChange={setScope}
@@ -59,7 +67,7 @@ export function SignalLab() {
                 <th className="left">Signal</th>
                 <th className="left">Family</th>
                 <th className="left" style={{ minWidth: 240 }}>
-                  Mean rank IC, 2011–2025
+                  {index ? `Mean rank IC, ${index} months only` : 'Mean rank IC, 2011–2025'}
                 </th>
                 <th title="t-statistic on yearly mean ICs: monthly ICs of a 12-month outcome overlap, so yearly means are the honest sample">t-stat</th>
                 <th>Years positive</th>
@@ -98,10 +106,10 @@ export function SignalLab() {
                         <span style={{ ...NUM, fontWeight: 600, color: C.text }}>{num(v, 3, true)}</span>
                       </span>
                     </td>
-                    <td>{num(scope === 'raw' ? s.t_raw : s.t_sector, 1, true)}</td>
-                    <td>{(scope === 'raw' ? s.years_pos_raw : s.years_pos_sector) ?? '–'}</td>
-                    <td>{pct(scope === 'raw' ? s.spread_raw : s.spread_sector, 1, true)}</td>
-                    <td>{pct(s.coverage, 0)}</td>
+                    <td>{num(scope === 'raw' ? stats(s)?.t_raw : stats(s)?.t_sector, 1, true)}</td>
+                    <td>{(scope === 'raw' ? stats(s)?.years_pos_raw : stats(s)?.years_pos_sector) ?? '–'}</td>
+                    <td>{pct(scope === 'raw' ? stats(s)?.spread_raw : stats(s)?.spread_sector, 1, true)}</td>
+                    <td>{pct(stats(s)?.coverage, 0)}</td>
                   </tr>
                 )
               })}
@@ -112,7 +120,7 @@ export function SignalLab() {
 
       <ChartCard
         title="Rank IC by year"
-        note="One row per signal, one column per year. A signal worth trusting is the same colour most years, not strong on average because of one."
+        note="One row per signal, one column per year, across all three indexes. A signal worth trusting is the same colour most years, not strong on average because of one."
         table={
           <table className="dash-table">
             <thead>

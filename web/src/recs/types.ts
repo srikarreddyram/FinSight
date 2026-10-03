@@ -19,6 +19,7 @@ export interface WatchRow {
   ticker: string
   name: string | null
   sector: string | null
+  index?: string | null
   market_cap: number | null
   return_rank: number
   return_decile: number
@@ -42,6 +43,7 @@ export interface Meta {
   built: string
   companies: number
   universe: string
+  indexes?: Record<string, number>
   returns_model: { trained_through: string; rows: number; features: number; labels: string; validation_ic: number | null }
   risk_models: Record<string, { trained_through: string; rows: number; features: string; target: string; validation: number | null }>
   return_bands: Record<string, Band>
@@ -49,10 +51,7 @@ export interface Meta {
   holdout_note: string
 }
 
-export interface SignalRow {
-  signal: string
-  label: string
-  family: string
+export interface SignalStats {
   coverage: number | null
   ic_raw: number | null
   t_raw: number | null
@@ -62,6 +61,13 @@ export interface SignalRow {
   t_sector: number | null
   years_pos_sector: string | null
   spread_sector: number | null
+}
+
+export interface SignalRow extends SignalStats {
+  signal: string
+  label: string
+  family: string
+  by_index?: (SignalStats & { index: string })[]
   by_year: { year: number; ic: number | null; ic_sector: number | null }[]
 }
 
@@ -91,10 +97,25 @@ export interface BacktestModel {
   mean_ic: number
 }
 
+export interface BacktestIndex {
+  index: string
+  from: string
+  months: number
+  companies: number
+  mean_ic: Record<string, number>
+  stats: BacktestModel['stats']
+}
+
 export interface Backtest {
   q: number
   cost_bps: number
   models: Record<string, BacktestModel>
+  by_index?: BacktestIndex[]
+  checks?: {
+    ic: { universe: string; model: string; kind: 'raw' | 'neutral'; ic: number; t: number | null; years: number }[]
+    exposures: Record<string, Record<string, number>>
+    unscored: Record<string, number>
+  } | null
 }
 
 export interface RiskSummary {
@@ -105,6 +126,17 @@ export interface RiskSummary {
   grade_change_rate: number
   smoothing_months: number
   stability: { smoothing_months: number; grade_change_rate: number; severe_rate_low: number; severe_rate_severe: number; vol_low: number; vol_severe: number }[]
+  by_index?: {
+    index: string
+    n: number
+    severe_rate: number
+    median_fwd_vol: number
+    vol_ic_final: number
+    vol_ic_trailing: number
+    monthly_auc_final: number
+    monthly_auc_trailing_vol: number
+    share_graded_severe: number
+  }[]
   distribution: { sector: string; risk_grade: number; n: number }[]
   pillars: Record<string, number>
 }

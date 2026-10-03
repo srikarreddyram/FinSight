@@ -10,10 +10,12 @@ import { BandBar, GradeChip, Page, RankMeter } from './shared'
 type SortKey = 'return_rank' | 'risk_grade' | 'expected_vol' | 'severe_loss_rate' | 'market_cap' | 'ticker'
 const CAPS = [
   { value: 0, label: 'Any size' },
+  { value: 2e9, label: 'Over $2B' },
   { value: 1e10, label: 'Over $10B' },
   { value: 5e10, label: 'Over $50B' },
   { value: 2e11, label: 'Over $200B' },
 ]
+const INDEX_ORDER = ['S&P 500', 'S&P 400', 'S&P 600'] // large, mid, small
 const control = {
   fontFamily: F.mono,
   fontSize: 11,
@@ -28,6 +30,7 @@ export function Watchlist() {
   const { data: rows, error } = useData(getWatchlist)
   const { data: meta } = useData(getMeta)
   const [sector, setSector] = useState('')
+  const [index, setIndex] = useState('')
   const [grades, setGrades] = useState<number[]>([])
   const [minCap, setMinCap] = useState(0)
   const [query, setQuery] = useState('')
@@ -35,11 +38,13 @@ export function Watchlist() {
   const [sort, setSort] = useState<{ key: SortKey; desc: boolean }>({ key: 'return_rank', desc: true })
 
   const sectors = useMemo(() => [...new Set((rows ?? []).map((r) => r.sector).filter((s): s is string => !!s))].sort(), [rows])
+  const indexes = useMemo(() => INDEX_ORDER.filter((name) => (rows ?? []).some((r) => r.index === name)), [rows])
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase()
     const out = (rows ?? []).filter(
       (r) =>
         (!sector || r.sector === sector) &&
+        (!index || r.index === index) &&
         (!grades.length || (r.risk_grade != null && grades.includes(r.risk_grade))) &&
         (!minCap || (r.market_cap ?? 0) >= minCap) &&
         (!q || r.ticker.toLowerCase().includes(q) || (r.name ?? '').toLowerCase().includes(q)),
@@ -53,7 +58,7 @@ export function Watchlist() {
       return x < y ? -dir : x > y ? dir : 0
     })
     return out
-  }, [rows, sector, grades, minCap, query, sort, view])
+  }, [rows, sector, index, grades, minCap, query, sort, view])
 
   const th = (key: SortKey, label: string, title?: string, left = false) => (
     <th className={left ? 'left' : ''} aria-sort={sort.key === key ? (sort.desc ? 'descending' : 'ascending') : 'none'} title={title}>
@@ -69,7 +74,7 @@ export function Watchlist() {
       title="Watchlist"
       lead={
         <>
-          Every S&amp;P 500 member ranked on the return model’s expected 12-month return relative to the index, next to its risk grade. In testing, stocks at the top of this ranking did not reliably beat those at the bottom, so treat a rank as a prompt to read the filing, not as a forecast.
+          Every current {meta?.universe ? meta.universe.replace(/ members$/, '') : 'index'} member ranked on the return model’s expected 12-month return relative to the S&amp;P 500, next to its risk grade. In testing, stocks at the top of this ranking did not reliably beat those at the bottom, so treat a rank as a prompt to read the filing, not as a forecast.
           {meta && ` As of ${monthLabel(meta.as_of)}; the model last trained on outcomes through ${monthLabel(meta.returns_model.trained_through)}.`}
         </>
       }
@@ -84,6 +89,14 @@ export function Watchlist() {
             <option key={s}>{s}</option>
           ))}
         </select>
+        {indexes.length > 1 && (
+          <select value={index} onChange={(e) => setIndex(e.target.value)} aria-label="Index" style={control}>
+            <option value="">All indexes</option>
+            {indexes.map((s) => (
+              <option key={s}>{s}</option>
+            ))}
+          </select>
+        )}
         <select value={minCap} onChange={(e) => setMinCap(Number(e.target.value))} aria-label="Market cap" style={control}>
           {CAPS.map((c) => (
             <option key={c.value} value={c.value}>
@@ -131,6 +144,7 @@ export function Watchlist() {
               <tr>
                 {th('ticker', 'Company', undefined, true)}
                 <th className="left">Sector</th>
+                {indexes.length > 1 && <th className="left">Index</th>}
                 {th('return_rank', 'Return rank', 'Percentile of the model’s expected 12-month return relative to the S&P 500 (100 = highest)')}
                 <th className="left" title="12-month return minus the S&P 500 earned by stocks in the same predicted decile, 2015–2024: median, with the middle half as a bar">
                   Past outcomes
@@ -154,6 +168,11 @@ export function Watchlist() {
                   <td className="left" style={{ fontFamily: F.body, color: C.dim }}>
                     {r.sector ?? '–'}
                   </td>
+                  {indexes.length > 1 && (
+                    <td className="left" style={{ color: C.dim }}>
+                      {r.index ?? '–'}
+                    </td>
+                  )}
                   <td>
                     <RankMeter rank={r.return_rank} />
                   </td>

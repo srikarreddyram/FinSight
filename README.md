@@ -115,28 +115,33 @@ evidence to tell parsing losses from retrieval misses. Results are in [eval/REPO
 ## Research platform (in progress)
 
 The Copilot is the first module of a filings-driven research platform ([docs/PRD.md](docs/PRD.md)). The rest
-runs on S&P 500 members since 2010, with every figure used only from the day after its filing reached the SEC:
+runs on S&P 500, 400 and 600 members (about 1,500 companies a month), with every figure used only from the day
+after its filing reached the SEC:
 
 - **Warehouse**: XBRL facts, prices, 10-K text and EDGAR's filing index in DuckDB ([docs/phase-a-warehouse.md](docs/phase-a-warehouse.md))
 - **Signals, ranker, backtest**: 29 signals, a walk-forward LightGBM ranker and a monthly long-short backtest ([docs/phase-b-signals.md](docs/phase-b-signals.md))
 - **Risk Engine**: a 1–5 risk grade from expected volatility and severe-loss risk ([docs/phase-b2-risk.md](docs/phase-b2-risk.md))
 - **Dashboard**: watchlist, company cards, signal lab, backtest and risk pages ([docs/phase-c-dashboard.md](docs/phase-c-dashboard.md))
+- **Wider universe**: the same study on mid and small caps, every result also reported inside each index ([docs/phase-d-universe.md](docs/phase-d-universe.md))
 
-The results so far are reported as they are: the return ranker shows no edge on large caps, and the
-risk grades add almost nothing to a stock's own trailing volatility. The docs give the numbers and the baselines.
+The results so far are reported as they are: the return ranker shows no edge in large, mid or small caps,
+and the risk grades add almost nothing to a stock's own trailing volatility. The docs give the numbers and the
+baselines.
 
 ```bash
 uv sync --all-extras
-uv run python -m warehouse.universe          # S&P 500 membership since 2010
+uv run python -m warehouse.universe          # S&P 500, 400 and 600 membership
 uv run python -m warehouse.xbrl --universe   # then: warehouse.sectors, warehouse.prices --universe SPY,
                                              #       warehouse.tenk --universe, warehouse.events
 uv run python -m models.study                # signal panel and single-signal study
 uv run python -m models.ranker && uv run python -m models.backtest
 uv run python -m risk.panel && uv run python -m risk.models
+uv run python -m models.checks               # style-neutral ICs and survivorship gaps
 uv run python -m recs.build                  # this month's watchlist and the dashboard's data
 ```
 
-Set `FINSIGHT_THREADS=3` to keep a laptop cool during the builds. Research and education only; not financial advice.
+Set `FINSIGHT_THREADS=3` to keep a laptop cool during the builds, and `FINSIGHT_UNIVERSE=sp500` to run on
+large caps only. Research and education only; not financial advice.
 
 ## Layout
 

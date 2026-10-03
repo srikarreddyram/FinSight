@@ -17,13 +17,13 @@ from pathlib import Path
 import pandas as pd
 from fastapi import APIRouter, HTTPException
 
+from models import STUDY_DIR
 from recs.labels import SIGNALS
 from risk import models as risk_models
 
 router = APIRouter(prefix="/recs", tags=["recommendations"])
 
 RECS_DIR = Path("data/recs")
-STUDY_DIR = Path("data/study/sp500")
 # Shown on the company page by default: one or two per family, the ones a reader recognises.
 HISTORY_SIGNALS = ["revenue_growth", "operating_margin", "roe", "leverage", "leverage_chg", "earnings_yield",
                    "book_to_market", "f_score", "accruals", "sim_risk_factors"]  # fmt: skip

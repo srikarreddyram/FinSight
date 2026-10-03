@@ -122,6 +122,44 @@ export function Risk() {
               Base rate of a severe loss: {pct(o.base_severe_rate, 1)}. AUC of 0.5 is a coin flip.
             </p>
           </Card>
+          {data.by_index && data.by_index.length > 1 && (
+            <Card style={{ padding: '16px 18px', overflowX: 'auto' }}>
+              <SectionLabel style={{ letterSpacing: '0.24em' }}>The same grades inside each index</SectionLabel>
+              <table className="dash-table" style={{ marginTop: 10 }}>
+                <thead>
+                  <tr>
+                    <th className="left">Index</th>
+                    <th title="Stock-months in the test years">Stock-months</th>
+                    <th title="Share that fell 40% or more within 12 months">Severe-loss rate</th>
+                    <th title="Median realised 12-month volatility">Median volatility</th>
+                    <th title="Share of the index's stock-months given the Severe grade">Graded Severe</th>
+                    <th title="Volatility rank IC within the index: the grade's input, then past-year volatility alone">Volatility IC</th>
+                    <th title="Within-month downside AUC within the index: the grade's input, then past-year volatility alone">Downside AUC</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.by_index.map((b) => (
+                    <tr key={b.index}>
+                      <td className="left">{b.index}</td>
+                      <td>{b.n.toLocaleString()}</td>
+                      <td>{pct(b.severe_rate, 1)}</td>
+                      <td>{pct(b.median_fwd_vol, 0)}</td>
+                      <td>{pct(b.share_graded_severe, 0)}</td>
+                      <td>
+                        {num(b.vol_ic_final, 3)} <span style={{ color: C.muted }}>vs {num(b.vol_ic_trailing, 3)}</span>
+                      </td>
+                      <td>
+                        {num(b.monthly_auc_final, 3)} <span style={{ color: C.muted }}>vs {num(b.monthly_auc_trailing_vol, 3)}</span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <p style={{ fontFamily: F.body, fontSize: 12, color: C.muted, margin: '10px 0 0', lineHeight: 1.55 }}>
+                Grades are ranked across all three indexes together, so smaller companies, which swing more, take more of the Severe grades. The last two columns show the grade’s input first and past-year volatility alone second.
+              </p>
+            </Card>
+          )}
           <div className="grid gap-4 lg:grid-cols-2">
             <Card style={{ padding: '16px 18px', minWidth: 0, overflowX: 'auto' }}>
               <SectionLabel style={{ letterSpacing: '0.24em' }}>Steadier grades against sharper ones</SectionLabel>

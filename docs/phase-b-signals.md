@@ -81,6 +81,8 @@ The ranker's long leg returned 13.1% a year against SPY's 13.6%. A Sharpe of 0.2
 
 ## Next
 
+The universe was since widened to the S&P 400 and 600; the ranker shows no edge there either. See [phase-d-universe.md](phase-d-universe.md). The items below predate that.
+
 1. Loughran-McDonald tone: waiting on a licence decision. The dictionary is free for academic use; commercial use needs permission from its authors. A portfolio project is arguably fine, but it's @Srikar's call.
 2. Improve the ranker without touching the test years: feature selection inside each fold's training window (the model dilutes the one strong signal among ~30 weak ones), and a sector-neutral target.
 3. Phase B2 Risk Engine on this panel and these folds (volatility and severe-loss targets; the distress classifier lives there).

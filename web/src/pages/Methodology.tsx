@@ -29,7 +29,7 @@ export function Methodology() {
       </Section>
       <Section title="Universe">
         <p style={{ margin: 0 }}>
-          S&amp;P 500 members since 2010, including companies later removed, rebuilt from the index’s published additions and removals and matched to SEC company identifiers.
+          Members of the S&amp;P 500 since 2010, the S&amp;P 400 since 2016 and the S&amp;P 600 since 2020, including companies later removed, rebuilt from each index’s published additions and removals and matched to SEC company identifiers. The mid- and small-cap indexes start later because their published change records are incomplete before then; a company only counts in the months it was actually a member.
           {meta && ` The current watchlist covers ${meta.companies} companies as of ${monthLabel(meta.as_of)}.`}
         </p>
       </Section>
@@ -38,7 +38,7 @@ export function Methodology() {
           <strong>Survivorship.</strong> Free price data drops companies that were acquired or delisted. Those companies’ fundamentals are in the data, but their returns are not, so results lean towards companies that survived, most in the earliest years.
         </p>
         <p style={{ margin: 0 }}>
-          <strong>No proven edge in returns.</strong> Over ten test years the return model’s ranking was not distinguishable from no skill: its top-minus-bottom portfolio earned a little after costs, well within what chance produces. A few single signals, such as changes in leverage, held up better. The range of outcomes at any rank is far wider than the difference between ranks.
+          <strong>No proven edge in returns.</strong> Over ten test years the return model’s ranking was not distinguishable from no skill, in large, mid or small caps: its top-minus-bottom portfolio earned a little after costs, almost all of it in one year. A few single signals held up better: changes in leverage among large caps, and cheapness (earnings yield, book-to-market) among small caps. The range of outcomes at any rank is far wider than the difference between ranks.
         </p>
         <p style={{ margin: 0 }}>
           <strong>Risk grades.</strong> The grades sort risk in the right order, but they are built mostly from the stock’s own past-year volatility: blending in the filing-based models improves on it only by a hair.

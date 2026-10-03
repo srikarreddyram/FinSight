@@ -25,8 +25,9 @@ import duckdb
 import numpy as np
 import pandas as pd
 
+from models import STUDY_DIR as STUDY
+from models import UNIVERSE, ranker
 from models import backtest as bt
-from models import ranker
 from models.walkforward import rank_ic_by_month
 from recs.labels import PILLAR_LABELS, SIGNALS, base, fmt, label
 from risk import models as risk_models
@@ -36,8 +37,9 @@ from warehouse import db
 
 log = logging.getLogger(__name__)
 
-STUDY = Path("data/study/sp500")
 OUT = Path("data/recs")
+UNIVERSE_LABELS = {"sp500": "S&P 500 members", "sp1500": "S&P 500, 400 and 600 members"}
+INDEX_LABELS = {"sp500": "S&P 500", "sp400": "S&P 400", "sp600": "S&P 600"}
 PILLAR_OF = {m: p for p, ms in PILLARS.items() for m in ms}
 
 
@@ -104,7 +106,7 @@ def score_returns(panel: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     model = ranker._fit_lgbm(train, chosen, config.grid, config.target)
     latest = panel[panel["month"] == panel["month"].max()].reset_index(drop=True)
     contrib = model.predict(latest[chosen], pred_contrib=True)[:, :-1]
-    out = latest[["ticker", "cik", "month", "sector"]].copy()
+    out = latest[[c for c in ("ticker", "cik", "month", "sector", "tier") if c in latest]].copy()
     out["return_score"] = model.predict(latest[chosen])
     out["return_rank"] = (out["return_score"].rank(pct=True) * 100).round(1)
     out["return_decile"] = decile(out["return_score"], out["month"])
@@ -182,6 +184,19 @@ def risk_components(risk_preds: pd.DataFrame) -> dict[str, dict[int, float]]:
 
 def signal_summary(panel: pd.DataFrame) -> list[dict]:
     overall = pd.read_csv(STUDY / "signals.csv", index_col="signal")
+    # The same study inside each index (models.study writes one file per index when there is more than one).
+    tiers = {t: pd.read_csv(f, index_col="signal") for t in INDEX_LABELS if (f := STUDY / f"signals_{t}.csv").exists()}
+    keys = (
+        "coverage",
+        "ic_raw",
+        "t_raw",
+        "years_pos_raw",
+        "spread_raw",
+        "ic_sector",
+        "t_sector",
+        "years_pos_sector",
+        "spread_sector",
+    )
     done = panel.dropna(subset=["excess_ret"])
     out = []
     for name, row in overall.iterrows():
@@ -191,6 +206,8 @@ def signal_summary(panel: pd.DataFrame) -> list[dict]:
         out.append({
             "signal": name, "label": label(name), "family": SIGNALS.get(name, ("", "Other", ""))[1],
             **{k: (None if pd.isna(v) else v) for k, v in row.items()},
+            "by_index": [{"index": INDEX_LABELS[t], **{k: (None if pd.isna(r.loc[name, k]) else r.loc[name, k]) for k in keys}}
+                         for t, r in tiers.items() if name in r.index],
             "by_year": [{"year": y, "ic": float(ic[[m.year == y for m in ic.index]].mean()),
                          "ic_sector": float(sic[[m.year == y for m in sic.index]].mean())} for y in years],
         })  # fmt: skip
@@ -216,7 +233,28 @@ def backtest_summary(con: duckdb.DuckDBPyConnection, preds: pd.DataFrame, q: flo
             "by_year": json.loads(by_year.reset_index(names="year").to_json(orient="records")),
             "mean_ic": float(ics.loc[name, "mean"]),
         }
-    return {"q": q, "cost_bps": cost_bps, "models": models}
+    by_index = []
+    if "tier" in rows and rows["tier"].nunique() > 1:  # the same portfolios formed inside one index at a time
+        for t in INDEX_LABELS:
+            g = rows[rows["tier"] == t]
+            if g.empty:
+                continue
+            run = bt.backtest(g, "pred_lgbm", q, cost_bps)
+            tier_ics = ranker.ic_table(g)
+            by_index.append({
+                "index": INDEX_LABELS[t], "from": str(min(run.index)), "months": len(run),
+                "companies": int(g.groupby("month")["ticker"].size().median()),
+                "mean_ic": {m: float(tier_ics.loc[m, "mean"]) for m in tier_ics.index},
+                "stats": json.loads(bt.report(run).to_json(orient="index")),
+            })  # fmt: skip
+    checks = json.loads((STUDY / "checks.json").read_text()) if (STUDY / "checks.json").exists() else None
+    if checks:  # index names as the dashboard shows them
+        for row in checks["ic"]:
+            row["universe"] = INDEX_LABELS.get(row["universe"], "All indexes")
+        order = ["All indexes", *INDEX_LABELS.values()]
+        checks["ic"].sort(key=lambda r: order.index(r["universe"]))
+        checks["unscored"] = {INDEX_LABELS.get(k, k): v for k, v in checks["unscored"].items()}
+    return {"q": q, "cost_bps": cost_bps, "models": models, "by_index": by_index, "checks": checks}
 
 
 def risk_summary(risk_preds: pd.DataFrame, latest: pd.DataFrame) -> dict:
@@ -229,6 +267,11 @@ def risk_summary(risk_preds: pd.DataFrame, latest: pd.DataFrame) -> dict:
         "grade_change_rate": float(rep["stability"].loc[risk_models.SMOOTH, "grade_change_rate"]),
         "smoothing_months": risk_models.SMOOTH,
         "stability": json.loads(rep["stability"].reset_index().to_json(orient="records")),
+        "by_index": [
+            {"index": INDEX_LABELS[t], **{k: float(v) for k, v in rep["by_tier"].loc[t].items()}}
+            for t in INDEX_LABELS
+            if "by_tier" in rep and t in rep["by_tier"].index
+        ],
         "distribution": json.loads(
             latest.groupby(["sector", "risk_grade"]).size().rename("n").reset_index().to_json(orient="records")
         ),
@@ -259,6 +302,7 @@ def build(con: duckdb.DuckDBPyConnection) -> dict:
     w["severe_loss_rate"] = w["downside_decile"].map(lambda d: comps["severe"].get(int(d)) if pd.notna(d) else None)
     names = dict(con.execute("select cik, name from companies").fetchall())
     w["name"] = w["cik"].map(names)
+    w["index"] = w["tier"].map(INDEX_LABELS) if "tier" in w else INDEX_LABELS["sp500"]
     caps = {}
     for cik in w["cik"]:
         snap = snapshot(con, int(cik), as_of)
@@ -271,7 +315,8 @@ def build(con: duckdb.DuckDBPyConnection) -> dict:
     OUT.mkdir(parents=True, exist_ok=True)
     w.to_json(OUT / "watchlist.json", orient="records", date_format="iso", default_handler=str)
     meta = {
-        "as_of": str(as_of), "built": str(date.today()), "companies": len(w), "universe": "S&P 500 members",
+        "as_of": str(as_of), "built": str(date.today()), "companies": len(w), "universe": UNIVERSE_LABELS[UNIVERSE],
+        "indexes": w["index"].value_counts().to_dict(),
         "returns_model": return_info, "risk_models": risk_info, "return_bands": bands, "risk_components": comps,
         "holdout_note": "Development test years end at 2024; 2025 is held out for one final evaluation.",
     }  # fmt: skip

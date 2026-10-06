@@ -1,6 +1,6 @@
 // Hash routes keep the app a static single page: '#/watchlist', '#/company/AAPL'. No hash is the Copilot.
 import { useEffect, useState } from 'react'
-import { ChartLine, FlaskConical, ListOrdered, type LucideIcon, MessageSquareText, ShieldAlert } from 'lucide-react'
+import { Activity, ChartLine, FlaskConical, ListOrdered, type LucideIcon, MessageSquareText, ShieldAlert } from 'lucide-react'
 
 export interface NavItem {
   path: string
@@ -15,6 +15,7 @@ export const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
     items: [
       { path: '', label: 'Copilot', icon: MessageSquareText, description: 'Ask questions about company filings' },
       { path: '/watchlist', label: 'Watchlist', icon: ListOrdered, description: 'Ranked companies with risk grades' },
+      { path: '/movers', label: 'Movers', icon: Activity, description: 'Biggest moves today, this week and this month, and why' },
     ],
   },
   {

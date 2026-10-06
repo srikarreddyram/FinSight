@@ -1,6 +1,6 @@
 import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, Download, Search, X } from 'lucide-react'
 import { useMemo, useState } from 'react'
-import { Badge, Card, Segmented } from '../design/primitives'
+import { Avatar, Badge, Card, Segmented } from '../design/primitives'
 import { C, F, GRADE_LABELS, NUM, gradeColor } from '../design/tokens'
 import { getMeta, getWatchlist } from '../recs/api'
 import { cap, monthLabel, pct } from '../recs/format'
@@ -240,10 +240,13 @@ export function Watchlist() {
                       }}
                     >
                       <td className="left">
-                        <a href={`#${href}`} style={{ display: 'inline-grid', color: C.text, textDecoration: 'none', minWidth: 150, maxWidth: 220 }}>
-                          <span style={{ ...NUM, fontWeight: 600, color: C.accent }}>{r.ticker}</span>
-                          <span className="truncate" style={{ fontFamily: F.body, fontSize: 12, color: C.muted }}>
-                            {r.name}
+                        <a href={`#${href}`} style={{ display: 'flex', alignItems: 'center', gap: 10, color: C.text, textDecoration: 'none', minWidth: 190, maxWidth: 260 }}>
+                          <Avatar ticker={r.ticker} name={r.name} size={32} />
+                          <span style={{ display: 'grid', minWidth: 0 }}>
+                            <span className="truncate" style={{ fontFamily: F.body, fontWeight: 600, color: C.text }}>
+                              {r.name ?? r.ticker}
+                            </span>
+                            <span style={{ ...NUM, fontSize: 12, color: C.muted }}>{r.ticker}</span>
                           </span>
                         </a>
                       </td>

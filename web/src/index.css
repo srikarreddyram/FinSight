@@ -8,41 +8,41 @@
   --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
 
-  --color-paper: #f5f6f8;
+  --color-paper: #ffffff;
   --color-card: #ffffff;
-  --color-raised: #f9fafb;
-  --color-ink: #111827;
-  --color-dim: #374151;
-  --color-muted: #6b7280;
-  --color-line: #e5e7eb;
-  --color-edge: #0f766e33;
-  --color-hover: #0f766e0f;
-  --color-accent: #0f766e;
-  --color-accent-soft: #e6f4f2;
+  --color-raised: #f7f7f8;
+  --color-ink: #23262f;
+  --color-dim: #44475b;
+  --color-muted: #7c7e8c;
+  --color-line: #e9e9eb;
+  --color-edge: #00a07640;
+  --color-hover: #00a0760d;
+  --color-accent: #00a076;
+  --color-accent-soft: #e6f6f0;
   --color-on-accent: #ffffff;
-  --color-verified: #047857;
-  --color-verified-soft: #d1fae5;
-  --color-computed: #1d4ed8;
-  --color-computed-soft: #dbeafe;
+  --color-verified: #00a076;
+  --color-verified-soft: #e6f6f0;
+  --color-computed: #3b6fe0;
+  --color-computed-soft: #e8effc;
   --color-warn: #b45309;
-  --color-warn-soft: #fef3c7;
-  --color-red: #b91c1c;
+  --color-warn-soft: #fef3e2;
+  --color-red: #e0452f;
   --color-tier-good: #4d7c0f;
 }
 
 :root {
   color-scheme: light;
-  --shadow-card: 0 1px 2px rgb(16 24 40 / 0.04);
+  --shadow-card: none;
   --shadow-pop: 0 12px 32px rgb(16 24 40 / 0.14), 0 2px 6px rgb(16 24 40 / 0.06);
-  --sidebar: #fbfbfc;
+  --search: #f4f4f5;
   /* Chart colours, validated for colour-blind separation and contrast on the card surface (light and dark):
      pos/neg mark which side of zero a value is; context is the de-emphasis gray for baselines;
      grade-1..5 is one hue stepped light to dark for the ordered risk grades.
      They live in plain :root, not @theme: Tailwind only emits theme variables it sees used, and the grade
      colours are looked up by a computed name (gradeColor), so four of the five were being dropped. */
-  --chart-pos: #0d9488;
-  --chart-neg: #c2410c;
-  --chart-context: #a8adb7;
+  --chart-pos: #00a076;
+  --chart-neg: #f0503c;
+  --chart-context: #b4b6bf;
   --grade-1: #fa9d68;
   --grade-2: #db814c;
   --grade-3: #bc662f;
@@ -55,31 +55,31 @@
   :root:not([data-theme="light"]) {
     color-scheme: dark;
     --shadow-card: none;
-    --shadow-pop: 0 16px 40px rgb(0 0 0 / 0.5), 0 2px 8px rgb(0 0 0 / 0.3);
-    --sidebar: #0c0e12;
-    --color-paper: #0f1115;
-    --color-card: #171a20;
-    --color-raised: #1d2128;
-    --color-ink: #e8e9ec;
-    --color-dim: #c3c7cf;
-    --color-muted: #9aa0ab;
-    --color-line: #2a2e36;
-    --color-edge: #2dd4bf33;
-    --color-hover: #2dd4bf12;
-    --color-accent: #2dd4bf;
-    --color-accent-soft: #123a37;
-    --color-on-accent: #042f2e;
-    --color-verified: #34d399;
-    --color-verified-soft: #0f3326;
-    --color-computed: #93c5fd;
-    --color-computed-soft: #172a4a;
-    --color-warn: #fbbf24;
+    --shadow-pop: 0 16px 40px rgb(0 0 0 / 0.55), 0 2px 8px rgb(0 0 0 / 0.35);
+    --search: #232427;
+    --color-paper: #121212;
+    --color-card: #1b1c1e;
+    --color-raised: #232427;
+    --color-ink: #eeeef0;
+    --color-dim: #c7c8cc;
+    --color-muted: #8e9099;
+    --color-line: #2c2d30;
+    --color-edge: #1dbf8e40;
+    --color-hover: #1dbf8e12;
+    --color-accent: #1dbf8e;
+    --color-accent-soft: #10302a;
+    --color-on-accent: #04241a;
+    --color-verified: #1dbf8e;
+    --color-verified-soft: #10302a;
+    --color-computed: #8fb0ff;
+    --color-computed-soft: #1a2540;
+    --color-warn: #f5b84a;
     --color-warn-soft: #3a2a0c;
-    --color-red: #f87171;
+    --color-red: #ff6a55;
     --color-tier-good: #a3e635;
-    --chart-pos: #1aa596;
-    --chart-neg: #d97736;
-    --chart-context: #5b616d;
+    --chart-pos: #10a87c;
+    --chart-neg: #f05a44;
+    --chart-context: #5b5e66;
     /* On a dark surface more risk reads lighter, so the ramp's anchor flips. */
     --grade-1: #894100;
     --grade-2: #a65c20;
@@ -91,31 +91,31 @@
 :root[data-theme="dark"] {
   color-scheme: dark;
   --shadow-card: none;
-  --shadow-pop: 0 16px 40px rgb(0 0 0 / 0.5), 0 2px 8px rgb(0 0 0 / 0.3);
-  --sidebar: #0c0e12;
-  --color-paper: #0f1115;
-  --color-card: #171a20;
-  --color-raised: #1d2128;
-  --color-ink: #e8e9ec;
-  --color-dim: #c3c7cf;
-  --color-muted: #9aa0ab;
-  --color-line: #2a2e36;
-  --color-edge: #2dd4bf33;
-  --color-hover: #2dd4bf12;
-  --color-accent: #2dd4bf;
-  --color-accent-soft: #123a37;
-  --color-on-accent: #042f2e;
-  --color-verified: #34d399;
-  --color-verified-soft: #0f3326;
-  --color-computed: #93c5fd;
-  --color-computed-soft: #172a4a;
-  --color-warn: #fbbf24;
+  --shadow-pop: 0 16px 40px rgb(0 0 0 / 0.55), 0 2px 8px rgb(0 0 0 / 0.35);
+  --search: #232427;
+  --color-paper: #121212;
+  --color-card: #1b1c1e;
+  --color-raised: #232427;
+  --color-ink: #eeeef0;
+  --color-dim: #c7c8cc;
+  --color-muted: #8e9099;
+  --color-line: #2c2d30;
+  --color-edge: #1dbf8e40;
+  --color-hover: #1dbf8e12;
+  --color-accent: #1dbf8e;
+  --color-accent-soft: #10302a;
+  --color-on-accent: #04241a;
+  --color-verified: #1dbf8e;
+  --color-verified-soft: #10302a;
+  --color-computed: #8fb0ff;
+  --color-computed-soft: #1a2540;
+  --color-warn: #f5b84a;
   --color-warn-soft: #3a2a0c;
-  --color-red: #f87171;
+  --color-red: #ff6a55;
   --color-tier-good: #a3e635;
-  --chart-pos: #1aa596;
-  --chart-neg: #d97736;
-  --chart-context: #5b616d;
+  --chart-pos: #10a87c;
+  --chart-neg: #f05a44;
+  --chart-context: #5b5e66;
   --grade-1: #894100;
   --grade-2: #a65c20;
   --grade-3: #c3773e;
@@ -157,38 +157,77 @@ body {
 @layer components {
 /* ---------- App shell ---------- */
 
-.sidebar {
-  background: var(--sidebar);
-  border-right: 1px solid var(--color-line);
-}
-.side-link {
-  display: flex;
+/* Top navigation: text tabs with a green underline on the active one. */
+.topnav-link {
+  position: relative;
+  display: inline-flex;
   align-items: center;
-  gap: 10px;
-  height: 34px;
-  padding: 0 10px;
-  border-radius: 8px;
-  color: var(--color-dim);
-  font-size: 13.5px;
+  height: 64px;
+  padding: 0 2px;
+  color: var(--color-muted);
+  font-size: 14.5px;
   font-weight: 500;
   text-decoration: none;
-  transition: background-color 120ms, color 120ms;
+  white-space: nowrap;
+  transition: color 120ms;
 }
-.side-link svg {
-  color: var(--color-muted);
-  flex: none;
-}
-.side-link:hover {
-  background: var(--color-hover);
+.topnav-link:hover {
   color: var(--color-ink);
 }
-.side-link[aria-current="page"] {
-  background: var(--color-accent-soft);
+.topnav-link[aria-current="page"] {
   color: var(--color-ink);
   font-weight: 600;
 }
-.side-link[aria-current="page"] svg {
+.topnav-link[aria-current="page"]::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 3px;
+  border-radius: 3px 3px 0 0;
+  background: var(--color-accent);
+}
+/* Phones: a bottom tab bar, the way investing apps do it. */
+.tabbar-link {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  height: 58px;
+  color: var(--color-muted);
+  font-size: 11px;
+  font-weight: 500;
+  text-decoration: none;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+.tabbar-link[aria-current="page"] {
   color: var(--color-accent);
+  font-weight: 600;
+}
+.menu-link {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 46px;
+  padding: 0 14px;
+  border-radius: 10px;
+  color: var(--color-ink);
+  font-size: 15px;
+  font-weight: 500;
+  text-decoration: none;
+  background: transparent;
+  border: none;
+  width: 100%;
+  cursor: pointer;
+}
+.menu-link:hover,
+.menu-link[aria-current="page"] {
+  background: var(--color-accent-soft);
 }
 
 /* ---------- Controls ---------- */
@@ -230,8 +269,8 @@ select.control {
   align-items: center;
   justify-content: center;
   gap: 7px;
-  height: 34px;
-  padding: 0 13px;
+  height: 36px;
+  padding: 0 16px;
   border-radius: 8px;
   font-family: var(--font-sans);
   font-size: 13px;
@@ -249,6 +288,7 @@ select.control {
   background: var(--color-accent);
   color: var(--color-on-accent);
   border: 1px solid var(--color-accent);
+  font-weight: 600;
 }
 .btn-primary:not(:disabled):hover {
   background: color-mix(in srgb, var(--color-accent) 88%, var(--color-ink));
@@ -439,4 +479,38 @@ select.control {
 .dash-table th[aria-sort="ascending"],
 .dash-table th[aria-sort="descending"] {
   color: var(--color-ink);
+}
+
+/* Pills: time ranges and view switches. The selected one is green on a soft green fill. */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 32px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid var(--color-line);
+  background: var(--color-card);
+  color: var(--color-dim);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 120ms, border-color 120ms, color 120ms;
+}
+.pill:hover {
+  border-color: var(--color-edge);
+  color: var(--color-ink);
+}
+.pill[aria-pressed="true"] {
+  background: var(--color-accent-soft);
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+  font-weight: 600;
+}
+.pill-sm {
+  height: 28px;
+  padding: 0 11px;
+  font-size: 12.5px;
 }

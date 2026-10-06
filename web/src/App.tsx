@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ChevronRight, Menu, Search } from 'lucide-react'
 import { ApiError, ask, listDocuments } from './api'
 import { AnswerCard } from './components/AnswerCard'
 import { AskBar } from './components/AskBar'
@@ -10,16 +9,14 @@ import { AnswerSkeleton, Card, ErrorState, PageSkeleton } from './design/primiti
 import { C, F } from './design/tokens'
 import { Backtest } from './pages/Backtest'
 import { Company } from './pages/Company'
+import { Movers } from './pages/Movers'
 import { Risk } from './pages/Risk'
 import { SignalLab } from './pages/SignalLab'
 import { Watchlist } from './pages/Watchlist'
-import { getMeta } from './recs/api'
-import type { Meta } from './recs/types'
 import { CommandPalette } from './shell/CommandPalette'
-import { NAV_GROUPS, sectionOf, useRoute } from './shell/routes'
-import { Sidebar } from './shell/Sidebar'
+import { useRoute } from './shell/routes'
+import { TabBar, TopNav } from './shell/Nav'
 import { useTheme } from './shell/theme'
-import { useEscape } from './shell/useEscape'
 import type { Answer, Citation, DocumentInfo } from './types'
 
 const HISTORY_KEY = 'finsight.history'
@@ -44,14 +41,10 @@ export default function App() {
   // A shared /?q=... link asks its question on load.
   const [pending, setPending] = useState<string | null>(() => new URLSearchParams(window.location.search).get('q'))
   const [docs, setDocs] = useState<DocumentInfo[]>([])
-  const [meta, setMeta] = useState<Meta | null>(null)
   const [apiDown, setApiDown] = useState(false)
   const [libraryOpen, setLibraryOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
-  const [menuOpen, setMenuOpen] = useState(false)
   const [theme, setTheme] = useTheme()
-  const closeMenu = useCallback(() => setMenuOpen(false), [])
-  useEscape(menuOpen, closeMenu)
 
   const refreshDocs = useCallback(() => {
     listDocuments()
@@ -62,11 +55,6 @@ export default function App() {
       .catch(() => setApiDown(true))
   }, [])
   useEffect(refreshDocs, [refreshDocs])
-  useEffect(() => {
-    getMeta()
-      .then(setMeta)
-      .catch(() => setMeta(null))
-  }, [])
 
   // ⌘K / Ctrl+K opens search from anywhere.
   useEffect(() => {
@@ -83,37 +71,26 @@ export default function App() {
   const indexed = docs.filter((d) => d.indexed)
   const route = useRoute()
   const indexedTickers = new Set(indexed.map((d) => d.ticker))
-  const companyTicker = route.startsWith('/company/') ? decodeURIComponent(route.slice('/company/'.length)) : null
-
-  const sidebar = (onNavigate?: () => void) => (
-    <Sidebar route={route} meta={meta} apiDown={apiDown} filings={indexed.length} theme={theme} onTheme={setTheme} onLibrary={() => setLibraryOpen(true)} onNavigate={onNavigate} />
-  )
+  // '/company/NKE' or '/company/NKE?w=1d' (a mover opens on the window it was found in)
+  const [companyPath, companyQuery] = route.startsWith('/company/') ? route.slice('/company/'.length).split('?') : ['', '']
+  const companyTicker = companyPath ? decodeURIComponent(companyPath) : null
+  const companyWindow = new URLSearchParams(companyQuery ?? '').get('w')
 
   return (
     <div style={{ minHeight: '100vh', color: C.text }}>
       <a href="#main" className="sr-only focus:not-sr-only" style={{ position: 'absolute', zIndex: 80, padding: 8, background: C.surface }}>
         Skip to content
       </a>
-      {/* Desktop: a fixed rail. Narrow screens: the same rail as a drawer behind the menu button. */}
-      <div className="hidden lg:block" style={{ position: 'fixed', top: 0, bottom: 0, left: 0, zIndex: 40 }}>
-        {sidebar()}
-      </div>
-      {menuOpen && (
-        <div className="lg:hidden" style={{ position: 'fixed', inset: 0, zIndex: 60 }} role="dialog" aria-modal="true" aria-label="Navigation">
-          <button type="button" aria-label="Close navigation" onClick={() => setMenuOpen(false)} className="anim-fade-in" style={{ position: 'absolute', inset: 0, background: 'rgb(8 10 14 / 0.45)', border: 'none' }} />
-          <div className="anim-slide-left" style={{ position: 'absolute', top: 0, bottom: 0, left: 0, boxShadow: 'var(--shadow-pop)' }}>
-            {sidebar(() => setMenuOpen(false))}
-          </div>
-        </div>
-      )}
-
-      <div className="lg:pl-[232px]">
-        <TopBar route={route} company={companyTicker} onMenu={() => setMenuOpen(true)} onSearch={() => setSearchOpen(true)} />
+      <TopNav route={route} apiDown={apiDown} theme={theme} onTheme={setTheme} onSearch={() => setSearchOpen(true)} onLibrary={() => setLibraryOpen(true)} />
+      {/* Room for the phone tab bar under the content. */}
+      <div className="pb-[76px] lg:pb-0">
         <div id="main" style={{ position: 'relative' }}>
           {route === '/watchlist' ? (
             <Watchlist />
+          ) : route === '/movers' ? (
+            <Movers />
           ) : companyTicker ? (
-            <Company ticker={companyTicker} hasFilings={indexedTickers.has(companyTicker)} />
+            <Company ticker={companyTicker} hasFilings={indexedTickers.has(companyTicker)} initialWindow={companyWindow === '1d' || companyWindow === '1m' ? companyWindow : '1w'} opened={!!companyWindow} key={companyTicker} />
           ) : route === '/signals' ? (
             <SignalLab />
           ) : route === '/backtest' ? (
@@ -126,68 +103,10 @@ export default function App() {
         </div>
       </div>
 
+      <TabBar route={route} onLibrary={() => setLibraryOpen(true)} />
       {searchOpen && <CommandPalette onClose={() => setSearchOpen(false)} />}
       <LibraryDrawer open={libraryOpen} docs={docs} onClose={() => setLibraryOpen(false)} onIngested={refreshDocs} />
     </div>
-  )
-}
-
-/** Sticky bar over the content: where you are, and search. */
-function TopBar({ route, company, onMenu, onSearch }: { route: string; company: string | null; onMenu: () => void; onSearch: () => void }) {
-  const section = sectionOf(route)
-  const group = NAV_GROUPS.find((g) => g.items.some((n) => n.path === section?.path))
-  const isMac = typeof navigator !== 'undefined' && /mac/i.test(navigator.platform)
-  return (
-    <header
-      style={{
-        position: 'sticky',
-        top: 0,
-        zIndex: 30,
-        height: 56,
-        display: 'flex',
-        alignItems: 'center',
-        gap: 12,
-        padding: '0 clamp(16px, 2.4vw, 28px)',
-        background: `color-mix(in srgb, ${C.bg} 88%, transparent)`,
-        backdropFilter: 'blur(10px)',
-        borderBottom: `1px solid ${C.rule}`,
-      }}
-    >
-      <button type="button" className="btn btn-ghost btn-icon lg:hidden" aria-label="Open navigation" onClick={onMenu}>
-        <Menu size={18} />
-      </button>
-      <a href="/" className="flex lg:hidden" style={{ alignItems: 'center' }} aria-label="FinSight home">
-        <img src="/favicon.svg" alt="" width={22} height={22} style={{ borderRadius: 5 }} />
-      </a>
-      <nav aria-label="Breadcrumb" className="hidden sm:flex" style={{ alignItems: 'center', gap: 6, fontFamily: F.body, fontSize: 13.5, minWidth: 0 }}>
-        {group && <span style={{ color: C.muted }}>{group.label}</span>}
-        {group && <ChevronRight size={14} color={C.muted} />}
-        {company ? (
-          <>
-            <a href="#/watchlist" style={{ color: C.muted, textDecoration: 'none' }}>
-              Watchlist
-            </a>
-            <ChevronRight size={14} color={C.muted} />
-            <span style={{ color: C.text, fontWeight: 600 }}>{company}</span>
-          </>
-        ) : (
-          <span style={{ color: C.text, fontWeight: 600 }}>{section?.label ?? 'FinSight'}</span>
-        )}
-      </nav>
-      <button
-        type="button"
-        onClick={onSearch}
-        className="control"
-        aria-label="Search companies and pages"
-        style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, width: 'min(340px, 52vw)', cursor: 'pointer', color: C.muted, textAlign: 'left' }}
-      >
-        <Search size={15} />
-        <span className="truncate" style={{ flex: 1 }}>
-          Search companies…
-        </span>
-        <span className="kbd hidden sm:inline">{isMac ? '⌘K' : 'Ctrl K'}</span>
-      </button>
-    </header>
   )
 }
 

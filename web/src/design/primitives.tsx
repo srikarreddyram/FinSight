@@ -22,7 +22,7 @@ export function Card({
         background: C.surface,
         border: `1px solid ${C.rule}`,
         borderLeft: accent ? `3px solid ${accent}` : `1px solid ${C.rule}`,
-        borderRadius: 10,
+        borderRadius: 12,
         boxShadow: 'var(--shadow-card)',
         ...style,
       }}
@@ -66,7 +66,7 @@ export function SectionLabel({
 export function PanelTitle({ children, description, style }: { children: ReactNode; description?: ReactNode; style?: CSSProperties }) {
   return (
     <div style={{ minWidth: 0, ...style }}>
-      <h2 style={{ fontFamily: F.body, fontSize: 14.5, fontWeight: 600, color: C.text, margin: 0, lineHeight: 1.35 }}>{children}</h2>
+      <h2 style={{ fontFamily: F.body, fontSize: 16, fontWeight: 600, color: C.text, margin: 0, lineHeight: 1.35 }}>{children}</h2>
       {description && <div style={{ fontFamily: F.body, fontSize: 13, color: C.muted, marginTop: 4, lineHeight: 1.55, maxWidth: 760 }}>{description}</div>}
     </div>
   )
@@ -99,7 +99,7 @@ export function Panel({
   )
 }
 
-/** Two- or three-way toggle: a recessed track with the active option raised out of it. */
+/** A row of pills (time ranges, views): the selected one is green on a soft green fill. */
 export function Segmented<T extends string>({
   options,
   value,
@@ -113,51 +113,22 @@ export function Segmented<T extends string>({
   disabled?: boolean
   size?: 'sm' | 'md'
 }) {
-  const h = size === 'sm' ? 26 : 30
   return (
-    <div
-      role="group"
-      style={{
-        display: 'inline-flex',
-        background: C.raised,
-        border: `1px solid ${C.rule}`,
-        borderRadius: 9,
-        padding: 2,
-        gap: 2,
-        flex: 'none',
-      }}
-    >
-      {options.map((o) => {
-        const active = o.value === value
-        return (
-          <button
-            key={o.value}
-            type="button"
-            disabled={disabled}
-            onClick={() => onChange(o.value)}
-            aria-pressed={active}
-            title={o.title}
-            style={{
-              height: h,
-              background: active ? C.surface : 'transparent',
-              color: active ? C.text : C.muted,
-              border: `1px solid ${active ? C.rule : 'transparent'}`,
-              boxShadow: active ? 'var(--shadow-card)' : 'none',
-              borderRadius: 7,
-              padding: '0 11px',
-              cursor: disabled ? 'default' : 'pointer',
-              fontFamily: F.body,
-              fontWeight: active ? 600 : 500,
-              fontSize: size === 'sm' ? 12 : 12.5,
-              whiteSpace: 'nowrap',
-              transition: 'background-color 120ms, color 120ms',
-              opacity: disabled ? 0.5 : 1,
-            }}
-          >
-            {o.label}
-          </button>
-        )
-      })}
+    <div role="group" style={{ display: 'inline-flex', gap: 6, flex: 'none', flexWrap: 'wrap' }}>
+      {options.map((o) => (
+        <button
+          key={o.value}
+          type="button"
+          disabled={disabled}
+          onClick={() => onChange(o.value)}
+          aria-pressed={o.value === value}
+          title={o.title}
+          className={size === 'sm' ? 'pill pill-sm' : 'pill'}
+          style={disabled ? { opacity: 0.5, cursor: 'default' } : undefined}
+        >
+          {o.label}
+        </button>
+      ))}
     </div>
   )
 }
@@ -316,6 +287,58 @@ export function PageSkeleton() {
           <Skeleton key={i} w={`${92 - (i % 3) * 7}%`} h={7} style={{ opacity: 0.7 - i * 0.09 }} />
         ))}
       </div>
+    </div>
+  )
+}
+
+// Soft tint + strong ink pairs for company avatars, chosen by a hash of the ticker so a company keeps its colour.
+const AVATAR_TINTS = [
+  ['#e6f6f0', '#00845f'],
+  ['#e8effc', '#2f5bc4'],
+  ['#fdf0e6', '#b25a12'],
+  ['#f3ecfd', '#6d3fc4'],
+  ['#fdeceb', '#c03a2b'],
+  ['#e9f5fb', '#1f78a6'],
+  ['#fbf5e3', '#8a6a07'],
+  ['#eef0f3', '#4a5160'],
+]
+
+/** A company's initials in a tinted circle: Groww-style identity without logos we don't have rights to. */
+export function Avatar({ ticker, name, size = 36 }: { ticker: string; name?: string | null; size?: number }) {
+  let h = 0
+  for (const ch of ticker) h = (h * 31 + ch.charCodeAt(0)) >>> 0
+  const [bg, fg] = AVATAR_TINTS[h % AVATAR_TINTS.length]
+  const SUFFIX = /^(inc|incorporated|corp|corporation|co|company|ltd|limited|plc|llc|lp|nv|sa|ag|se|holdings?|group|the|class|[a-z])$/i
+  const words = (name ?? ticker).replace(/[^A-Za-z0-9 ]/g, ' ').split(/\s+/).filter((w) => w && !SUFFIX.test(w))
+  const initials = (words.length > 1 ? words[0][0] + words[1][0] : (words[0] ?? ticker)[0]).toUpperCase()
+  return (
+    <span
+      aria-hidden
+      style={{ width: size, height: size, flex: 'none', borderRadius: 999, background: bg, color: fg, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontFamily: F.body, fontWeight: 700, fontSize: size * 0.36, letterSpacing: '-0.02em' }}
+    >
+      {initials}
+    </span>
+  )
+}
+
+/** Underlined text tabs inside a page (Overview, News, …). */
+export function Tabs<T extends string>({ tabs, value, onChange }: { tabs: { value: T; label: string }[]; value: T; onChange: (v: T) => void }) {
+  return (
+    <div role="tablist" style={{ display: 'flex', gap: 24, borderBottom: `1px solid ${C.rule}`, overflowX: 'auto' }}>
+      {tabs.map((t) => (
+        <button
+          key={t.value}
+          type="button"
+          role="tab"
+          aria-selected={t.value === value}
+          aria-current={t.value === value ? 'page' : undefined}
+          onClick={() => onChange(t.value)}
+          className="topnav-link"
+          style={{ height: 46, background: 'transparent', border: 'none', cursor: 'pointer' }}
+        >
+          {t.label}
+        </button>
+      ))}
     </div>
   )
 }

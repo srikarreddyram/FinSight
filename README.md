@@ -13,7 +13,7 @@ reranking, DuckDB, and public data from SEC EDGAR and Yahoo Finance.
 | | |
 |---|---|
 | ![Watchlist](docs/images/watchlist.png) | ![Company page](docs/images/company.png) |
-| ![Backtest](docs/images/backtest.png) | ![Search](docs/images/search.png) |
+| ![Movers](docs/images/movers.png) | ![Backtest](docs/images/backtest.png) |
 
 ## Status at a glance
 
@@ -26,6 +26,7 @@ reranking, DuckDB, and public data from SEC EDGAR and Yahoo Finance.
 | 5. Prediction engine | Built, honest null | Walk-forward LightGBM ranker: mean rank IC 0.000 on test years 2015–2024; no edge in large, mid or small caps |
 | 6. Recommendation layer and web app | Built | Ranked watchlist with SHAP drivers and risk grades; a six-screen web app |
 | 7. Risk engine | Built | Severe-loss rate rises from 7% (grade 1) to 47% (grade 5); matches but does not beat trailing volatility within a month |
+| 8. What's moving a stock | Built | Live moves split into market, sector and company-specific parts; cited drivers from news and 8-Ks in about 3 seconds; Movers screen across the universe |
 
 The models' results are reported as measured, including the ones that didn't work. Phase docs in [`docs/`](docs)
 give every number with its baseline.
@@ -34,6 +35,7 @@ give every number with its baseline.
 
 - [The Copilot](#the-copilot)
 - [The research platform](#the-research-platform)
+- [What's moving a stock](#whats-moving-a-stock)
 - [The web app](#the-web-app)
 - [Getting started](#getting-started)
 - [Tech stack](#tech-stack)
@@ -222,6 +224,17 @@ never says "buy".
 - **Short histories** for the smaller indexes (nine test years for the S&P 400, five for the S&P 600).
 - **Free data.** Wikipedia's index change logs are volunteer-maintained; about 30 changes stay unresolved.
 
+## What's moving a stock
+
+Pick a company and a window (one day, one week, one month). Live prices are split into the market's part, the
+sector's part and the company-specific part, using a regression on the prior year, and the days with the largest
+company-specific moves are picked out. Dated headlines (Google News) and the company's 8-K filings (EDGAR) are
+gathered around them, and one free-tier Gemini call names the likely drivers; Python keeps only drivers that cite
+evidence that was actually given. Nike, week to 5 October 2026: −6.7%, of which −7.4% company-specific, driven by
+a weak revenue forecast and job cuts announced with its earnings. The Movers screen runs the same comparison across
+all ~1,500 companies. Spin-offs that the price feed doesn't adjust for are flagged rather than reported as losses.
+Details in [`docs/phase-e-news.md`](docs/phase-e-news.md).
+
 ## The web app
 
 React and TypeScript, served by the same FastAPI backend.
@@ -234,8 +247,12 @@ React and TypeScript, served by the same FastAPI backend.
 - **Company pages.** Key figures, return and risk drivers, rank, return and grade history, and each signal's
   percentile over time.
 - **Signal Lab, Backtest and Risk** screens with charts that each have a table view.
-- **Search (⌘K or Ctrl+K)** for any company or page; light, dark or system theme; works on phones; keyboard
-  accessible throughout.
+- **Movers and price moves.** The day's, week's or month's biggest moves against each company's sector; on any
+  company page, the move split into market, sector and company-specific parts, the key days, the dated headlines
+  and 8-K filings, and an Investigate button that returns the likely drivers, each cited.
+- **Search (⌘K or Ctrl+K)** for any company or page; light, dark or system theme; a bottom tab bar on phones;
+  keyboard accessible throughout. The look follows consumer investing apps: white cards, mint green for gains,
+  coral red for losses, pill time ranges.
 
 The app shows the product only; how the numbers are made lives in these docs.
 
@@ -296,7 +313,7 @@ cd web && npm install && npm run dev            # app on http://localhost:5173
 |---|---|
 | Language models | Gemini 3.5 Flash-Lite (answers) and Gemma 4 26B (query parsing, evaluation judge) on the free tier, throttled per model; Ollama for unlimited local runs; Anthropic optional |
 | Retrieval | Docling (tables), fastembed (bge-base, BM25, bge-reranker-base on ONNX), Qdrant |
-| Data | SEC EDGAR (submissions, XBRL company facts, filings), Yahoo Finance, Wikipedia index change logs |
+| Data | SEC EDGAR (submissions, XBRL company facts, filings), Yahoo Finance, Google News RSS, Wikipedia index change logs |
 | Storage and modelling | DuckDB, pandas, pyarrow, LightGBM |
 | Backend | FastAPI, Pydantic |
 | Frontend | React 19, TypeScript, Vite, Tailwind CSS 4, lucide icons, hand-built SVG charts |
@@ -313,6 +330,7 @@ signals/    accounting, fundamental, valuation and filing-text signals
 models/     panel, walk-forward folds, single-signal study, ranker, backtest, robustness checks
 risk/       risk pillars, market measures, panel, models and grades
 recs/       latest-month scoring with drivers, and the web app's API
+news/       live move breakdown, news and 8-K evidence, cited investigations, the Movers scan
 web/        React + TypeScript app
 ui/         the original Streamlit prototype
 tests/      unit and integration tests
@@ -357,6 +375,7 @@ Open items on the [project board](https://github.com/srikarreddyram/FinSight/iss
 | [`docs/phase-b2-risk.md`](docs/phase-b2-risk.md) | Risk engine: three iterations, targets, baselines |
 | [`docs/phase-c-dashboard.md`](docs/phase-c-dashboard.md) | Recommendation layer and web app |
 | [`docs/phase-d-universe.md`](docs/phase-d-universe.md) | The S&P 400 and 600 extension and robustness checks |
+| [`docs/phase-e-news.md`](docs/phase-e-news.md) | What is moving a stock: move breakdown, news and filings, cited drivers |
 
 ---
 

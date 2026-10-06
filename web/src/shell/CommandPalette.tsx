@@ -1,6 +1,7 @@
 // ⌘K: jump to any company in the universe or any page, or hand the text to the Copilot as a question.
 import { CornerDownLeft, MessageSquareText, Search } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { Avatar } from '../design/primitives'
 import { C, F, NUM } from '../design/tokens'
 import { getWatchlist } from '../recs/api'
 import type { WatchRow } from '../recs/types'
@@ -144,7 +145,10 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
                   {it.icon ? (
                     <span style={{ color: on ? C.accent : C.muted, display: 'flex' }}>{it.icon}</span>
                   ) : (
-                    <span style={{ ...NUM, fontSize: 12, fontWeight: 600, color: C.accent, minWidth: 48 }}>{it.title}</span>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 92 }}>
+                      <Avatar ticker={it.title} name={it.subtitle?.split(' · ')[0]} size={28} />
+                      <span style={{ ...NUM, fontSize: 12.5, fontWeight: 600, color: C.text }}>{it.title}</span>
+                    </span>
                   )}
                   <span style={{ flex: 1, minWidth: 0 }}>
                     {it.icon && <span style={{ display: 'block', fontFamily: F.body, fontSize: 13.5, fontWeight: 500 }}>{it.title}</span>}

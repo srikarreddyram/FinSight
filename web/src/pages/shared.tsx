@@ -10,6 +10,7 @@ export function Page({
   lead,
   aside,
   meta,
+  header,
   error,
   loading,
   children,
@@ -17,6 +18,7 @@ export function Page({
   title: ReactNode
   lead?: ReactNode
   aside?: ReactNode
+  header?: ReactNode // replaces the title block entirely (company pages)
   meta?: ReactNode
   error?: string | null
   loading?: boolean
@@ -24,6 +26,7 @@ export function Page({
 }) {
   return (
     <main style={{ maxWidth: 1440, margin: '0 auto', padding: 'clamp(16px, 2.4vw, 28px)', paddingBottom: 40 }}>
+      {header ?? (
       <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap', marginBottom: 20 }}>
         <div style={{ minWidth: 0, flex: '1 1 480px' }}>
           {meta && <div style={{ marginBottom: 8 }}>{meta}</div>}
@@ -32,6 +35,7 @@ export function Page({
         </div>
         {aside}
       </div>
+      )}
       {error ? (
         <ErrorState
           title="The dashboard data didn’t load"

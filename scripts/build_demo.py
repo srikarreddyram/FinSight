@@ -106,6 +106,35 @@ def histories(rows: dict[str, dict]) -> None:
     log.info("histories: %d companies, %d trading days", len(tickers), len(calendar))
 
 
+def earnings(rows: dict[str, dict]) -> None:
+    """Each company's move around its earnings reports over five years (same measure as the live endpoint)."""
+    from news.earnings import reactions, summary
+    from news.sources import collapse_reports
+
+    tickers = sorted(t for t in rows if "~" not in t)
+    closes = moves.yahoo_closes_chunked([moves.MARKET, *tickers], period="6y")
+    since = closes.index[-1].replace(year=closes.index[-1].year - 5)
+    con = duckdb.connect(str(ROOT / "data" / "warehouse.duckdb"), read_only=True)
+    dates = dict(con.execute(
+        "select cik, list(distinct filed_at) from filing_index where form = '8-K' and items like '%2.02%' and filed_at >= ? group by cik",
+        [since],
+    ).fetchall())  # fmt: skip
+    con.close()
+    n = 0
+    for t in tickers:
+        days = collapse_reports(dates.get(rows[t].get("cik"), []))
+        if t not in closes or not days:
+            continue
+        ev = reactions(closes, t, days)
+        if ev:
+            write(
+                f"moves/earnings/{t}.json",
+                {"ticker": t, "events": [{k: rounded(v) for k, v in e.items()} for e in ev], "summary": summary(ev)},
+            )
+            n += 1
+    log.info("earnings reactions: %d companies", n)
+
+
 def movers(http: httpx.Client) -> tuple[set[tuple[str, str]], set[tuple[str, str]]]:
     """The scan for each window; returns (panels, analyses) to snapshot as (ticker, window) pairs."""
     panels, analyses = set(), set()
@@ -179,6 +208,7 @@ def main() -> None:
     rows = {r["ticker"]: r for r in json.loads((OUT / "recs" / "watchlist.json").read_text())}
     company_pages(http, sorted(rows))
     histories(rows)
+    earnings(rows)
     panels, analyses = movers(http)
     well_known = [t for t in WELL_KNOWN if t in rows]
     panels |= {(t, w) for t in well_known for w in WINDOWS}

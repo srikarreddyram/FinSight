@@ -196,9 +196,9 @@ def test_unknown_ticker_and_bad_window(moves_client):
 def test_earnings_days_come_from_8k_item_2_02():
     from news.sources import earnings_dates
 
-    sub = {"filings": {"recent": {"form": ["8-K", "8-K", "10-Q", "8-K"], "filingDate": ["2026-10-01", "2026-09-15", "2026-08-01", "2026-06-26"],
-                                  "items": ["2.02,9.01", "5.02", "", "2.02"]}}}  # fmt: skip
-    assert earnings_dates(sub, date(2026, 1, 1)) == [date(2026, 6, 26), date(2026, 10, 1)]
+    sub = {"filings": {"recent": {"form": ["8-K", "8-K", "10-Q", "8-K", "8-K"], "filingDate": ["2026-10-01", "2026-09-15", "2026-08-01", "2026-06-30", "2026-06-23"],
+                                  "items": ["2.02,9.01", "5.02", "", "2.02", "2.02"]}}}  # fmt: skip
+    assert earnings_dates(sub, date(2026, 1, 1)) == [date(2026, 6, 23), date(2026, 10, 1)]  # 30 June repeats 23 June
 
 
 def test_price_history_with_earnings_markers(moves_client, monkeypatch):
@@ -211,3 +211,18 @@ def test_price_history_with_earnings_markers(moves_client, monkeypatch):
     assert len(body["points"]) == 22 and body["earnings"] == [body["points"][0]["day"]]
     assert body["change"] == pytest.approx(body["points"][-1]["close"] / body["points"][0]["close"] - 1, abs=1e-4)
     assert client.get("/moves/STK/history?range=10y").status_code == 422
+
+
+def test_earnings_reactions_span_two_sessions_and_rank_the_latest():
+    from news.earnings import reactions, summary
+
+    days = pd.bdate_range("2026-01-05", periods=10).date
+    stock = [100, 100, 100, 90, 90, 90, 90, 99, 99, 99]  # falls 10% on day 3, rises 10% on day 7
+    spy = [100] * 10
+    closes = pd.DataFrame({"STK": stock, "SPY": spy}, index=days)
+    rows = reactions(closes, "STK", [days[3], days[6], days[9]])  # the last date has no session after it
+    assert [r["date"] for r in rows] == [str(days[3]), str(days[6])]
+    assert rows[0]["change"] == pytest.approx(-0.10) and rows[1]["change"] == pytest.approx(0.10)  # close before -> session after
+    s = summary(rows)
+    assert s["count"] == 2 and s["up"] == 1 and s["typical"] == pytest.approx(0.10)
+    assert s["last"]["date"] == str(days[6]) and s["last_rank"] == 1.0 and s["last_biggest_since"] is None

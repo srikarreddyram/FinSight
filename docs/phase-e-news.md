@@ -57,6 +57,15 @@ guess: Movers marks any single day of ±40% or more, and a company page flags a 
 sits within a week of an 8-K reporting a completed acquisition or disposal. The investigation sees the same 8-K
 and headlines, and for Corteva names the spin-off.
 
+## Earnings reactions (`news/earnings.py`, `/moves/{ticker}/earnings`)
+
+An earnings report is a day the company filed an 8-K with item 2.02; a second results filing within ten days is
+the same report. Companies report before the open or after the close and the filing date doesn't say which, so the
+reaction is measured over two sessions, from the close before the filing date to the close of the trading day
+after it, and set against the S&P 500 over the same days. The company page shows five years of reactions with the
+typical (median absolute) move, how often the stock rose, the worst reaction, and whether the latest is the biggest
+in that direction since some date. Nike: ±6.5% typical, up after 7 of 21 reports, worst −19.6% (June 2024).
+
 ## Checks
 
 `tests/test_news.py`: RSS parsing and de-duplication, 8-K item naming, a synthetic stock with known betas and a

@@ -2,6 +2,7 @@ import { ArrowDownRight, ArrowUpRight, MessageSquareText, TrendingDown, Trending
 import { useState } from 'react'
 import { ChartCard } from '../charts/core'
 import { MovePanel } from '../components/MovePanel'
+import { EarningsCard } from '../components/EarningsCard'
 import { PriceChart } from '../components/PriceChart'
 import { getHistory } from '../news/api'
 import type { MoveWindow } from '../news/types'
@@ -113,6 +114,7 @@ export function Company({ ticker, hasFilings, initialWindow = '1w', opened = fal
           {tab === 'overview' && (
           <>
           <PriceChart ticker={ticker} />
+          <EarningsCard ticker={ticker} />
           <Card style={{ padding: 0, overflow: 'hidden' }}>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 1, background: C.rule }}>
               <div style={{ background: C.surface, padding: '16px 18px' }}>

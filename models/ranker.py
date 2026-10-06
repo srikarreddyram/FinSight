@@ -193,6 +193,7 @@ def main() -> None:
         "--last-test-year", default=2024, type=int,
         help="the PRD holds out the most recent full year (2025) for one final run; pass 2025 only for that run",
     )  # fmt: skip
+    ap.add_argument("--out", type=Path, help="where to write the predictions (default: predictions.parquet beside the panel)")
     args = ap.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     p = pd.read_parquet(args.panel)
@@ -200,7 +201,7 @@ def main() -> None:
         p[c] = pd.to_datetime(p[c]).dt.date
     features = [c for c in p.columns if c.endswith(("_rank", "_srank")) and not c.startswith("f_score_tests")]
     preds, _ = walk_forward(p, features, args.first_test_year, last_test_year=args.last_test_year)
-    preds.to_parquet(args.panel.parent / "predictions.parquet")
+    preds.to_parquet(args.out or args.panel.parent / "predictions.parquet")
     with pd.option_context("display.width", 200, "display.float_format", "{:.3f}".format):
         print(ic_table(preds))
         if "tier" in preds and preds["tier"].nunique() > 1:

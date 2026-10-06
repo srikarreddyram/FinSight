@@ -2,6 +2,28 @@
 export type MoveWindow = '1d' | '1w' | '1m'
 export type PriceRange = '1m' | '6m' | '1y' | '5y'
 
+export interface EarningsEvent {
+  date: string
+  change: number
+  market: number
+  vs_market: number
+}
+
+export interface EarningsReaction {
+  ticker: string
+  events: EarningsEvent[]
+  summary: {
+    count: number
+    typical?: number
+    up?: number
+    largest_up?: EarningsEvent
+    largest_down?: EarningsEvent
+    last?: EarningsEvent
+    last_rank?: number | null
+    last_biggest_since?: string | null
+  }
+}
+
 export interface PriceHistory {
   ticker: string
   range: PriceRange

@@ -3,6 +3,7 @@
 GET  /moves/scan?window=1w             biggest company-specific gains and falls across the universe (built in the
                                        background on first request, then cached for a few hours)
 GET  /moves/{ticker}/history?range=1y  daily closes for the price chart, with earnings days marked
+GET  /moves/{ticker}/earnings          the stock's move around each earnings report, against the market
 GET  /moves/{ticker}?window=1w         the move split into market, sector and company-specific parts, plus the
                                        dated news and filings, and the cached analysis if there is one
 POST /moves/{ticker}/investigate       the cited analysis (one LLM call; cached per ticker, day and window)
@@ -179,6 +180,26 @@ def _earnings_days(cik: int | None, since: date) -> list[date]:
             hit = (time.time(), [])
         _earnings[cik] = hit
     return [d for d in hit[1] if d >= since]
+
+
+@router.get("/{ticker}/earnings")
+def earnings_reactions(ticker: str) -> dict:
+    """The stock's two-session move around each earnings report over the past five years, against the market."""
+    from news.earnings import reactions, summary
+
+    row = _company(ticker)
+    key = (row["ticker"], "6y+spy")
+    hit = _history.get(key)
+    if not (hit and time.time() - hit[0] < PRICE_TTL):
+        try:
+            hit = (time.time(), moves.yahoo_closes([row["ticker"], moves.MARKET], period="6y"))
+        except ValueError as e:
+            raise HTTPException(422, str(e)) from e
+        _history[key] = hit
+    closes = hit[1]
+    since = closes.index[-1].replace(year=closes.index[-1].year - 5)
+    rows = reactions(closes, row["ticker"], _earnings_days(row.get("cik"), since))
+    return {"ticker": row["ticker"], "events": rows, "summary": summary(rows)}
 
 
 @router.get("/{ticker}/history")

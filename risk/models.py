@@ -268,13 +268,16 @@ def main() -> None:
     ap.add_argument("--panel", default=STUDY / "risk_panel.parquet", type=Path)
     ap.add_argument("--first-test-year", default=2015, type=int)
     ap.add_argument("--last-test-year", default=2024, type=int, help="2025 is the PRD's holdout")
+    ap.add_argument(
+        "--out", type=Path, help="where to write the predictions (default: risk_predictions.parquet beside the panel)"
+    )
     args = ap.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     p = pd.read_parquet(args.panel)
     for c in ("month", "target_end"):
         p[c] = pd.to_datetime(p[c]).dt.date
     r = walk_forward(p, args.first_test_year, args.last_test_year)
-    r.to_parquet(args.panel.parent / "risk_predictions.parquet")
+    r.to_parquet(args.out or args.panel.parent / "risk_predictions.parquet")
     with pd.option_context("display.width", 220, "display.float_format", "{:.3f}".format, "display.max_columns", 20):
         for name, t in report(r).items():
             print(f"\n## {name}\n{t}")

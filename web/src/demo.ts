@@ -67,6 +67,7 @@ export async function demoRequest<T>(path: string, init?: RequestInit): Promise<
       earnings: h.e.map((i) => cal[offset + i]).filter((d) => d >= (points[0]?.day ?? '')),
     } as T
   }
+  if ((m = p.match(/^\/moves\/([^/]+)\/earnings$/))) return file<T>(`moves/earnings/${decodeURIComponent(m[1]).toUpperCase()}.json`)
   if ((m = p.match(/^\/moves\/([^/]+)\/investigate$/))) return file<T>(`moves/${decodeURIComponent(m[1]).toUpperCase()}/analysis_${q.get('window') ?? '1w'}.json`)
   if ((m = p.match(/^\/moves\/([^/]+)$/))) return file<T>(`moves/${decodeURIComponent(m[1]).toUpperCase()}/move_${q.get('window') ?? '1w'}.json`)
   throw new ApiError(404, LOCAL_ONLY)

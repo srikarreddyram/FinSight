@@ -128,14 +128,24 @@ def filings_8k(submissions: dict, cik: int, since: date) -> list[Evidence]:
 
 
 def earnings_dates(submissions: dict, since: date) -> list[date]:
-    """Days the company filed an 8-K reporting results (item 2.02), oldest first."""
+    """Days the company reported results (8-K item 2.02), oldest first. A second results filing within ten days
+    of the first (an amendment, a supplementary release) is the same report and is dropped."""
     rec = submissions["filings"]["recent"]
     out = {
         date.fromisoformat(filed)
         for form, filed, items in zip(rec["form"], rec["filingDate"], rec.get("items") or [""] * len(rec["form"]), strict=False)
         if form == "8-K" and "2.02" in (items or "").split(",") and date.fromisoformat(filed) >= since
     }
-    return sorted(out)
+    return collapse_reports(out)
+
+
+def collapse_reports(days) -> list[date]:
+    """Sorted results-filing days with any day within ten days of the previous kept one dropped."""
+    kept: list[date] = []
+    for d in sorted(days):
+        if not kept or (d - kept[-1]).days > 10:
+            kept.append(d)
+    return kept
 
 
 def submissions(cik: int) -> dict | None:

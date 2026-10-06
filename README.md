@@ -26,9 +26,9 @@ reranking, DuckDB, and public data from SEC EDGAR and Yahoo Finance.
 | 2. Analyst Agent | Not started | Planned: a cited thesis per company |
 | 3. Fundamentals warehouse | Built | 45M XBRL facts, 22.7k 10-Ks split into Items, 6.7M daily prices, 758k filing-index rows, all point-in-time |
 | 4. Signal Lab | Built | 29 signals; leverage change is the one robust large-cap signal (rank IC 0.046, t = 4.4) |
-| 5. Prediction engine | Built, honest null | Walk-forward LightGBM ranker: mean rank IC 0.000 on test years 2015–2024; no edge in large, mid or small caps |
+| 5. Prediction engine | Built, honest null | Walk-forward LightGBM ranker: mean rank IC 0.000 on test years 2015–2024 and −0.085 on the 2025 holdout; no edge in large, mid or small caps |
 | 6. Recommendation layer and web app | Built | Ranked watchlist with SHAP drivers and risk grades; a six-screen web app |
-| 7. Risk engine | Built | Severe-loss rate rises from 7% (grade 1) to 47% (grade 5); matches but does not beat trailing volatility within a month |
+| 7. Risk engine | Built | Severe-loss rate rises from 7% (grade 1) to 47% (grade 5), and from 6% to 51% on the 2025 holdout; matches trailing volatility within a month |
 | 8. What's moving a stock | Built | Live moves split into market, sector and company-specific parts; cited drivers from news and 8-Ks in about 3 seconds; Movers screen across the universe |
 
 The models' results are reported as measured, including the ones that didn't work. Phase docs in [`docs/`](docs)
@@ -184,7 +184,8 @@ chance, so these are patterns to test on new data rather than findings.
 | Ranker mean rank IC | 0.000 | +0.016 | −0.005 | −0.012 |
 | Long-short return after costs | +2.3% a year (Sharpe 0.27) | +0.2% | +5.0% | +5.4% |
 
-**There is no edge.** The whole backtest gain comes from 2020 (+59%); the other nine years compound to a loss.
+**There is no edge**, and the 2025 holdout, scored once at the end, confirms it (ranker IC −0.085;
+[`docs/holdout-2025.md`](docs/holdout-2025.md)). The whole backtest gain comes from 2020 (+59%); the other nine years compound to a loss.
 Removing exposure to size, volatility, momentum and beta changes nothing (`models/checks.py`). An early run that
 showed IC 0.058 inside the S&P 400 did not survive the full data. The details are in
 [`docs/phase-d-universe.md`](docs/phase-d-universe.md).
@@ -247,8 +248,9 @@ React and TypeScript, served by the same FastAPI backend.
 - **Watchlist.** All ~1,500 companies ranked, with risk grade, expected range, volatility, market cap and the
   top driver. Filter by sector, index, size and grade, sort any column, page through, and export the filtered
   rows to CSV.
-- **Company pages.** Key figures, return and risk drivers, rank, return and grade history, and each signal's
-  percentile over time.
+- **Company pages.** A live quote and a 1M–5Y price chart with earnings days marked; how the stock reacted to
+  each earnings report over five years (two-session move against the market, typical size, worst reaction); key
+  figures, return and risk drivers, rank and grade history, and each signal's percentile over time.
 - **Signal Lab, Backtest and Risk** screens with charts that each have a table view.
 - **Movers and price moves.** The day's, week's or month's biggest moves against each company's sector; on any
   company page, the move split into market, sector and company-specific parts, the key days, the dated headlines
@@ -368,7 +370,6 @@ cd web && npm run lint && npm run build
 Open items on the [project board](https://github.com/srikarreddyram/FinSight/issues):
 
 - Copilot accuracy: over-refusals and ratio formula choices
-- Run the 2025 holdout evaluation once
 - Analyst Agent: a cited thesis for each company
 - Price history for delisted and acquired companies, to close the survivorship gap
 - Sector-specific risk measures for banks, real estate and energy
@@ -389,6 +390,7 @@ Open items on the [project board](https://github.com/srikarreddyram/FinSight/iss
 | [`docs/phase-c-dashboard.md`](docs/phase-c-dashboard.md) | Recommendation layer and web app |
 | [`docs/phase-d-universe.md`](docs/phase-d-universe.md) | The S&P 400 and 600 extension and robustness checks |
 | [`docs/phase-e-news.md`](docs/phase-e-news.md) | What is moving a stock: move breakdown, news and filings, cited drivers |
+| [`docs/holdout-2025.md`](docs/holdout-2025.md) | The 2025 holdout, run once: ranker and risk engine on a year they never saw |
 
 ---
 

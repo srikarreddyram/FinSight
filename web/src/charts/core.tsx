@@ -1,7 +1,7 @@
 // Shared chart components: the tooltip, the legend and the card frame with its table view.
 import { useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
-import { Card, SectionLabel, Segmented } from '../design/primitives'
+import { Card, PanelTitle, Segmented } from '../design/primitives'
 import { C, F, NUM } from '../design/tokens'
 import type { Tip } from './util'
 
@@ -21,14 +21,14 @@ export function Tooltip({ tip }: { tip: Tip | null }) {
         pointerEvents: 'none',
         background: C.raised,
         border: `1px solid ${C.rule}`,
-        borderRadius: 6,
+        borderRadius: 8,
         padding: '8px 10px',
-        boxShadow: '0 6px 24px rgb(0 0 0 / 0.14)',
+        boxShadow: 'var(--shadow-pop)',
         minWidth: 150,
         maxWidth: 280,
       }}
     >
-      <div style={{ fontFamily: F.mono, fontSize: 10, letterSpacing: '0.14em', textTransform: 'uppercase', color: C.muted, marginBottom: 5 }}>
+      <div style={{ fontFamily: F.body, fontSize: 11.5, fontWeight: 600, color: C.muted, marginBottom: 5 }}>
         {tip.title}
       </div>
       {tip.rows.map((r, i) => (
@@ -74,14 +74,12 @@ export function ChartCard({
 }) {
   const [view, setView] = useState<'chart' | 'table'>('chart')
   return (
-    <Card style={{ padding: '16px 18px', minWidth: 0, ...style }}>
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 12 }}>
-        <div style={{ minWidth: 0 }}>
-          <SectionLabel style={{ letterSpacing: '0.24em' }}>{title}</SectionLabel>
-          {note && <div style={{ fontFamily: F.body, fontSize: 12.5, color: C.muted, marginTop: 6, lineHeight: 1.55, maxWidth: 720 }}>{note}</div>}
-        </div>
+    <Card style={{ padding: '14px 18px 18px', minWidth: 0, ...style }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 14 }}>
+        <PanelTitle description={note}>{title}</PanelTitle>
         {table && (
           <Segmented
+            size="sm"
             value={view}
             onChange={setView}
             options={[

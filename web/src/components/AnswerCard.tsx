@@ -1,3 +1,4 @@
+import { RotateCcw } from 'lucide-react'
 import { Card, SectionLabel, Stat } from '../design/primitives'
 import { C, F } from '../design/tokens'
 import type { Answer, Citation } from '../types'
@@ -47,10 +48,10 @@ function Result({ answer, selected, onCite }: Props) {
       >
         <div style={{ flex: '1 1 180px', minWidth: 0 }}>
           <SectionLabel>Answer</SectionLabel>
-          <div style={{ fontFamily: F.display, fontWeight: 600, fontSize: 28, lineHeight: 1.1, marginTop: 4, color: C.text }}>
+          <div style={{ fontFamily: F.display, fontWeight: 650, fontSize: 20, lineHeight: 1.25, letterSpacing: '-0.01em', marginTop: 6, color: C.text }}>
             {companies.join(' · ') || 'Filings'}
           </div>
-          <div style={{ fontFamily: F.mono, fontSize: 10.5, color: C.muted, marginTop: 4, letterSpacing: '0.08em' }}>
+          <div style={{ fontFamily: F.body, fontSize: 12.5, color: C.muted, marginTop: 3 }}>
             {filings.join(' · ')}
           </div>
         </div>
@@ -70,9 +71,8 @@ function Result({ answer, selected, onCite }: Props) {
           gap: '6px 18px',
           padding: '10px 20px 12px',
           borderTop: `1px solid ${C.rule}`,
-          fontFamily: F.mono,
-          fontSize: 10.5,
-          letterSpacing: '0.06em',
+          fontFamily: F.body,
+          fontSize: 12,
           color: C.muted,
         }}
       >
@@ -105,7 +105,7 @@ function Refusal({ answer, selected, onCite }: Props) {
     <Card accent={C.warn} className="anim-fade-up" style={{ padding: '18px 20px' }}>
       <SectionLabel color={C.warn}>Not found in the filings</SectionLabel>
       <p style={{ fontFamily: F.body, fontSize: 14, color: C.dim, marginTop: 8, lineHeight: 1.6 }}>
-        {note || 'The indexed filings don’t contain enough evidence to answer this, so FinSight won’t guess.'}
+        {note || 'The indexed filings don’t cover this question.'}
       </p>
       <Passages list={answer.closest} selected={selected} onCite={onCite} />
     </Card>
@@ -116,30 +116,13 @@ function Refusal({ answer, selected, onCite }: Props) {
 function Failure({ answer, selected, onCite, onRetry }: Props) {
   return (
     <Card accent={C.red} className="anim-fade-up" style={{ padding: '18px 20px' }}>
-      <div style={{ fontFamily: F.body, fontWeight: 600, fontSize: 15, color: C.text }}>The engine didn’t answer</div>
-      <div style={{ fontFamily: F.mono, fontSize: 11.5, color: C.muted, marginTop: 6, lineHeight: 1.6, wordBreak: 'break-word' }}>
-        {answer.error} — the evidence below was found; free-tier models are sometimes overloaded, so try again in a moment.
+      <div style={{ fontFamily: F.body, fontWeight: 600, fontSize: 15, color: C.text }}>Couldn’t finish this answer</div>
+      <div style={{ fontFamily: F.body, fontSize: 13, color: C.muted, marginTop: 6, lineHeight: 1.6, wordBreak: 'break-word' }}>
+        The service is busy. The closest passages are below; try again in a moment.
       </div>
       {onRetry && (
-        <button
-          type="button"
-          onClick={onRetry}
-          style={{
-            marginTop: 12,
-            background: C.accent,
-            color: C.onAccent,
-            border: 'none',
-            borderRadius: 6,
-            padding: '7px 16px',
-            fontFamily: F.display,
-            fontWeight: 600,
-            fontSize: 15,
-            letterSpacing: '0.06em',
-            textTransform: 'uppercase',
-            cursor: 'pointer',
-          }}
-        >
-          Try again
+        <button type="button" onClick={onRetry} className="btn btn-primary" style={{ marginTop: 12 }}>
+          <RotateCcw size={14} /> Try again
         </button>
       )}
       <Passages list={answer.retrieved.slice(0, 3)} selected={selected} onCite={onCite} />
@@ -171,7 +154,7 @@ function Passages({ list, selected, onCite }: { list: Citation[]; selected: Cita
                   cursor: 'pointer',
                 }}
               >
-                <div style={{ fontFamily: F.mono, fontSize: 10.5, color: C.accent, letterSpacing: '0.06em' }}>
+                <div style={{ fontFamily: F.body, fontSize: 12, fontWeight: 600, color: C.accent }}>
                   {c.label} · {c.section}
                 </div>
                 <p className="line-clamp-2" style={{ fontFamily: F.body, fontSize: 12.5, color: C.muted, marginTop: 4 }}>

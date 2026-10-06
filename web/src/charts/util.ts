@@ -1,18 +1,20 @@
 // Chart helpers that are not components: sizing, ticks, axis text style, the tooltip's shape.
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import { C, NUM } from '../design/tokens'
 
-/** Width of a container, tracked as it resizes. */
-export function useWidth<T extends HTMLElement>(): [React.RefObject<T | null>, number] {
-  const ref = useRef<T | null>(null)
+/** Width of a container: measured as soon as it mounts, then tracked as it resizes. A callback ref, so the
+ *  first measurement doesn't wait for the ResizeObserver's first report (and a chart never paints empty). */
+export function useWidth<T extends HTMLElement>(): [(el: T | null) => void, number] {
   const [width, setWidth] = useState(0)
-  useEffect(() => {
-    const el = ref.current
+  const observer = useRef<ResizeObserver | null>(null)
+  const ref = useCallback((el: T | null) => {
+    observer.current?.disconnect()
+    observer.current = null
     if (!el) return
-    const ro = new ResizeObserver(([e]) => setWidth(Math.floor(e.contentRect.width)))
-    ro.observe(el)
-    return () => ro.disconnect()
+    setWidth(Math.floor(el.getBoundingClientRect().width))
+    observer.current = new ResizeObserver(([e]) => setWidth(Math.floor(e.contentRect.width)))
+    observer.current.observe(el)
   }, [])
   return [ref, width]
 }

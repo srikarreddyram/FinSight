@@ -1,45 +1,26 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { ChevronRight, Menu, Search } from 'lucide-react'
 import { ApiError, ask, listDocuments } from './api'
 import { AnswerCard } from './components/AnswerCard'
 import { AskBar } from './components/AskBar'
 import { Intro } from './components/Intro'
 import { LibraryDrawer } from './components/LibraryDrawer'
 import { SourceViewer } from './components/SourceViewer'
-import { TracePanel } from './components/TracePanel'
-import { DefaultWash, EdgeBezel, HeaderStripe } from './design/chrome'
-import { AnswerSkeleton, Card, ErrorState, PageSkeleton, SectionLabel, Segmented } from './design/primitives'
-import { C, F, NUM } from './design/tokens'
+import { AnswerSkeleton, Card, ErrorState, PageSkeleton } from './design/primitives'
+import { C, F } from './design/tokens'
 import { Backtest } from './pages/Backtest'
 import { Company } from './pages/Company'
-import { Methodology } from './pages/Methodology'
 import { Risk } from './pages/Risk'
 import { SignalLab } from './pages/SignalLab'
 import { Watchlist } from './pages/Watchlist'
-import type { Answer, Citation, DocumentInfo, Run } from './types'
-
-// Hash routes keep the dashboard a static single page: '#/watchlist', '#/company/AAPL'. No hash is the Copilot.
-const NAV = [
-  { path: '', label: 'Copilot' },
-  { path: '/watchlist', label: 'Watchlist' },
-  { path: '/signals', label: 'Signal Lab' },
-  { path: '/backtest', label: 'Backtest' },
-  { path: '/risk', label: 'Risk' },
-  { path: '/methodology', label: 'Methodology' },
-] as const
-
-function useRoute(): string {
-  const read = () => window.location.hash.replace(/^#/, '')
-  const [route, setRoute] = useState(read)
-  useEffect(() => {
-    const on = () => {
-      setRoute(read())
-      window.scrollTo(0, 0)
-    }
-    window.addEventListener('hashchange', on)
-    return () => window.removeEventListener('hashchange', on)
-  }, [])
-  return route
-}
+import { getMeta } from './recs/api'
+import type { Meta } from './recs/types'
+import { CommandPalette } from './shell/CommandPalette'
+import { NAV_GROUPS, sectionOf, useRoute } from './shell/routes'
+import { Sidebar } from './shell/Sidebar'
+import { useTheme } from './shell/theme'
+import { useEscape } from './shell/useEscape'
+import type { Answer, Citation, DocumentInfo } from './types'
 
 const HISTORY_KEY = 'finsight.history'
 
@@ -63,8 +44,14 @@ export default function App() {
   // A shared /?q=... link asks its question on load.
   const [pending, setPending] = useState<string | null>(() => new URLSearchParams(window.location.search).get('q'))
   const [docs, setDocs] = useState<DocumentInfo[]>([])
+  const [meta, setMeta] = useState<Meta | null>(null)
   const [apiDown, setApiDown] = useState(false)
   const [libraryOpen, setLibraryOpen] = useState(false)
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [theme, setTheme] = useTheme()
+  const closeMenu = useCallback(() => setMenuOpen(false), [])
+  useEscape(menuOpen, closeMenu)
 
   const refreshDocs = useCallback(() => {
     listDocuments()
@@ -75,92 +62,137 @@ export default function App() {
       .catch(() => setApiDown(true))
   }, [])
   useEffect(refreshDocs, [refreshDocs])
+  useEffect(() => {
+    getMeta()
+      .then(setMeta)
+      .catch(() => setMeta(null))
+  }, [])
+
+  // ⌘K / Ctrl+K opens search from anywhere.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        setSearchOpen((o) => !o)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
 
   const indexed = docs.filter((d) => d.indexed)
-  const companies = new Set(indexed.map((d) => d.company)).size
   const route = useRoute()
-  const section = route.startsWith('/company/') ? '/watchlist' : route
   const indexedTickers = new Set(indexed.map((d) => d.ticker))
+  const companyTicker = route.startsWith('/company/') ? decodeURIComponent(route.slice('/company/'.length)) : null
+
+  const sidebar = (onNavigate?: () => void) => (
+    <Sidebar route={route} meta={meta} apiDown={apiDown} filings={indexed.length} theme={theme} onTheme={setTheme} onLibrary={() => setLibraryOpen(true)} onNavigate={onNavigate} />
+  )
 
   return (
-    <div style={{ minHeight: '100vh', position: 'relative', color: C.text }}>
-      {/* Static chrome, rendered once and never tied to any view's animation. */}
-      <DefaultWash />
-      <EdgeBezel />
-
-      <header style={{ position: 'sticky', top: 0, zIndex: 30, background: `color-mix(in srgb, ${C.bg} 86%, transparent)`, backdropFilter: 'blur(10px)' }}>
-        <div style={{ maxWidth: 1400, margin: '0 auto', display: 'flex', alignItems: 'center', gap: 16, padding: '12px 20px' }}>
-          <a href="/" style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none', color: C.text }}>
-            <img src="/favicon.svg" alt="" width={26} height={26} />
-            <span style={{ fontFamily: F.display, fontWeight: 700, fontSize: 22, letterSpacing: '0.06em', textTransform: 'uppercase' }}>FinSight</span>
-          </a>
-          <span className="hidden sm:inline" style={{ ...NUM, fontSize: 10.5, color: apiDown ? C.red : C.muted, letterSpacing: '0.08em' }}>
-            {apiDown ? 'API OFFLINE' : `${indexed.length} FILINGS · ${companies} COMPANIES`}
-          </span>
-          <nav aria-label="Sections" style={{ display: 'flex', gap: 18, marginLeft: 12, overflowX: 'auto' }}>
-            {NAV.map((n) => (
-              <a key={n.path} href={n.path ? `#${n.path}` : '/'} className="nav-link" aria-current={section === n.path ? 'page' : undefined}>
-                {n.label}
-              </a>
-            ))}
-          </nav>
-          <div style={{ marginLeft: 'auto', display: 'flex', gap: 10 }}>
-            <HeaderButton onClick={() => setLibraryOpen(true)}>Library</HeaderButton>
+    <div style={{ minHeight: '100vh', color: C.text }}>
+      <a href="#main" className="sr-only focus:not-sr-only" style={{ position: 'absolute', zIndex: 80, padding: 8, background: C.surface }}>
+        Skip to content
+      </a>
+      {/* Desktop: a fixed rail. Narrow screens: the same rail as a drawer behind the menu button. */}
+      <div className="hidden lg:block" style={{ position: 'fixed', top: 0, bottom: 0, left: 0, zIndex: 40 }}>
+        {sidebar()}
+      </div>
+      {menuOpen && (
+        <div className="lg:hidden" style={{ position: 'fixed', inset: 0, zIndex: 60 }} role="dialog" aria-modal="true" aria-label="Navigation">
+          <button type="button" aria-label="Close navigation" onClick={() => setMenuOpen(false)} className="anim-fade-in" style={{ position: 'absolute', inset: 0, background: 'rgb(8 10 14 / 0.45)', border: 'none' }} />
+          <div className="anim-slide-left" style={{ position: 'absolute', top: 0, bottom: 0, left: 0, boxShadow: 'var(--shadow-pop)' }}>
+            {sidebar(() => setMenuOpen(false))}
           </div>
         </div>
-        <HeaderStripe />
-      </header>
+      )}
 
-      <div style={{ position: 'relative', zIndex: 1 }}>
-        {route === '/watchlist' ? (
-          <Watchlist />
-        ) : route.startsWith('/company/') ? (
-          <Company ticker={decodeURIComponent(route.slice('/company/'.length))} hasFilings={indexedTickers.has(decodeURIComponent(route.slice('/company/'.length)))} />
-        ) : route === '/signals' ? (
-          <SignalLab />
-        ) : route === '/backtest' ? (
-          <Backtest />
-        ) : route === '/risk' ? (
-          <Risk />
-        ) : route === '/methodology' ? (
-          <Methodology />
-        ) : (
-          <Workspace apiDown={apiDown} pending={pending} onPendingUsed={() => setPending(null)} />
-        )}
+      <div className="lg:pl-[232px]">
+        <TopBar route={route} company={companyTicker} onMenu={() => setMenuOpen(true)} onSearch={() => setSearchOpen(true)} />
+        <div id="main" style={{ position: 'relative' }}>
+          {route === '/watchlist' ? (
+            <Watchlist />
+          ) : companyTicker ? (
+            <Company ticker={companyTicker} hasFilings={indexedTickers.has(companyTicker)} />
+          ) : route === '/signals' ? (
+            <SignalLab />
+          ) : route === '/backtest' ? (
+            <Backtest />
+          ) : route === '/risk' ? (
+            <Risk />
+          ) : (
+            <Workspace apiDown={apiDown} filings={indexed.length} companies={new Set(indexed.map((d) => d.company)).size} pending={pending} onPendingUsed={() => setPending(null)} />
+          )}
+        </div>
       </div>
 
+      {searchOpen && <CommandPalette onClose={() => setSearchOpen(false)} />}
       <LibraryDrawer open={libraryOpen} docs={docs} onClose={() => setLibraryOpen(false)} onIngested={refreshDocs} />
     </div>
   )
 }
 
-function HeaderButton({ children, onClick }: { children: string; onClick: () => void }) {
+/** Sticky bar over the content: where you are, and search. */
+function TopBar({ route, company, onMenu, onSearch }: { route: string; company: string | null; onMenu: () => void; onSearch: () => void }) {
+  const section = sectionOf(route)
+  const group = NAV_GROUPS.find((g) => g.items.some((n) => n.path === section?.path))
+  const isMac = typeof navigator !== 'undefined' && /mac/i.test(navigator.platform)
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="hover-lift"
+    <header
       style={{
-        fontFamily: F.mono,
-        fontSize: 10.5,
-        letterSpacing: '0.2em',
-        textTransform: 'uppercase',
-        padding: '7px 14px',
-        borderRadius: 6,
-        cursor: 'pointer',
-        background: C.surface,
-        color: C.dim,
-        border: `1px solid ${C.rule}`,
+        position: 'sticky',
+        top: 0,
+        zIndex: 30,
+        height: 56,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 12,
+        padding: '0 clamp(16px, 2.4vw, 28px)',
+        background: `color-mix(in srgb, ${C.bg} 88%, transparent)`,
+        backdropFilter: 'blur(10px)',
+        borderBottom: `1px solid ${C.rule}`,
       }}
     >
-      {children}
-    </button>
+      <button type="button" className="btn btn-ghost btn-icon lg:hidden" aria-label="Open navigation" onClick={onMenu}>
+        <Menu size={18} />
+      </button>
+      <a href="/" className="flex lg:hidden" style={{ alignItems: 'center' }} aria-label="FinSight home">
+        <img src="/favicon.svg" alt="" width={22} height={22} style={{ borderRadius: 5 }} />
+      </a>
+      <nav aria-label="Breadcrumb" className="hidden sm:flex" style={{ alignItems: 'center', gap: 6, fontFamily: F.body, fontSize: 13.5, minWidth: 0 }}>
+        {group && <span style={{ color: C.muted }}>{group.label}</span>}
+        {group && <ChevronRight size={14} color={C.muted} />}
+        {company ? (
+          <>
+            <a href="#/watchlist" style={{ color: C.muted, textDecoration: 'none' }}>
+              Watchlist
+            </a>
+            <ChevronRight size={14} color={C.muted} />
+            <span style={{ color: C.text, fontWeight: 600 }}>{company}</span>
+          </>
+        ) : (
+          <span style={{ color: C.text, fontWeight: 600 }}>{section?.label ?? 'FinSight'}</span>
+        )}
+      </nav>
+      <button
+        type="button"
+        onClick={onSearch}
+        className="control"
+        aria-label="Search companies and pages"
+        style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, width: 'min(340px, 52vw)', cursor: 'pointer', color: C.muted, textAlign: 'left' }}
+      >
+        <Search size={15} />
+        <span className="truncate" style={{ flex: 1 }}>
+          Search companies…
+        </span>
+        <span className="kbd hidden sm:inline">{isMac ? '⌘K' : 'Ctrl K'}</span>
+      </button>
+    </header>
   )
 }
 
 /** The working app: ask on the left, source on the right. */
-function Workspace({ apiDown, pending, onPendingUsed }: { apiDown: boolean; pending: string | null; onPendingUsed: () => void }) {
-  const [run, setRun] = useState<Run>('E')
+function Workspace({ apiDown, filings, companies, pending, onPendingUsed }: { apiDown: boolean; filings: number; companies: number; pending: string | null; onPendingUsed: () => void }) {
   const [question, setQuestion] = useState('')
   const [answer, setAnswer] = useState<Answer | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -169,7 +201,7 @@ function Workspace({ apiDown, pending, onPendingUsed }: { apiDown: boolean; pend
   const [history, setHistory] = useState<string[]>(loadHistory)
   const abort = useRef<AbortController | null>(null)
 
-  const onAsk = async (q: string, withRun: Run = run) => {
+  const onAsk = async (q: string) => {
     abort.current?.abort()
     const ctrl = new AbortController()
     abort.current = ctrl
@@ -183,13 +215,13 @@ function Workspace({ apiDown, pending, onPendingUsed }: { apiDown: boolean; pend
     setHistory(h)
     saveHistory(h)
     try {
-      const a = await ask(q, withRun, ctrl.signal)
+      const a = await ask(q, 'E', ctrl.signal) // the full pipeline; run A (naive RAG) is for evaluation only
       setAnswer(a)
       setSelected((a.error ? a.retrieved[0] : a.refused ? a.closest[0] : a.citations[0]) ?? null)
     } catch (e) {
       if ((e as Error).name === 'AbortError') return
       if (e instanceof ApiError && e.status === 429) {
-        setError(`The free-tier LLM quota is used up for today (${e.message})`)
+        setError(`The daily question limit has been reached (${e.message})`)
       } else {
         setError(e instanceof Error ? e.message : String(e))
       }
@@ -207,50 +239,38 @@ function Workspace({ apiDown, pending, onPendingUsed }: { apiDown: boolean; pend
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pending])
 
-  // §8 alternate view: the same question through the naive baseline, one click away.
-  const switchRun = (r: Run) => {
-    setRun(r)
-    if (question) void onAsk(question, r)
-  }
-
   const started = busy || answer || error
   return (
-    <main style={{ maxWidth: 1400, margin: '0 auto', padding: '20px 20px 40px' }}>
+    <main style={{ maxWidth: 1440, margin: '0 auto', padding: 'clamp(16px, 2.4vw, 28px)' }}>
       {apiDown && (
         <div style={{ marginBottom: 16 }}>
-          <ErrorState title="Can’t reach the FinSight API" message="The web app is up but the backend isn’t" hint="start it with `uv run uvicorn app.api:app`, then reload" />
+          <ErrorState
+            title="Can’t reach the FinSight API"
+            message="The web app is up but the backend isn’t"
+            hint={
+              <>
+                start it with <code style={{ fontFamily: F.code, fontSize: 12 }}>uv run uvicorn app.api:app</code>, then reload
+              </>
+            }
+          />
         </div>
       )}
 
       {!started ? (
-        <Intro busy={busy} history={history} onAsk={(q) => onAsk(q)} />
+        <Intro busy={busy} history={history} filings={filings} companies={companies} onAsk={(q) => onAsk(q)} />
       ) : (
         <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
           <section style={{ minWidth: 0, display: 'grid', gap: 14, alignContent: 'start' }}>
             <AskBar key={question} busy={busy} initial={question} onAsk={(q) => onAsk(q)} showExamples={false} />
-            {/* Page-context label on the left, the view toggle on the right. */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-              <SectionLabel color={C.muted}>{run === 'E' ? 'Full pipeline · run E' : 'Naive baseline · run A'}</SectionLabel>
-              <Segmented<Run>
-                value={run}
-                onChange={switchRun}
-                disabled={busy}
-                options={[
-                  { value: 'E', label: 'Full system', title: 'Docling tables, hybrid search, filters, reranking' },
-                  { value: 'A', label: 'Naive RAG', title: 'Plain PDF text, fixed chunks, dense search only' },
-                ]}
-              />
-            </div>
             {busy && <AnswerSkeleton />}
-            {error && <ErrorState message={error} hint="try again once the quota resets or the backend is back" />}
+            {error && <ErrorState title="Couldn’t get an answer" message={error} hint="try again in a moment" />}
             {answer && (
               <>
                 <AnswerCard answer={answer} selected={selected} onCite={setSelected} onRetry={() => onAsk(question)} />
-                <TracePanel answer={answer} onCite={setSelected} />
               </>
             )}
           </section>
-          <section className="lg:sticky lg:top-[76px] lg:h-[calc(100vh-96px)]" style={{ minWidth: 0 }}>
+          <section className="lg:sticky lg:top-[80px] lg:h-[calc(100vh-104px)]" style={{ minWidth: 0 }}>
             <Card style={{ height: '100%', minHeight: '70vh', overflow: 'hidden' }}>
               {busy ? (
                 <div style={{ padding: 12, height: '100%' }}>

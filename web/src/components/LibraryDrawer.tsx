@@ -1,5 +1,7 @@
+import { Upload, X } from 'lucide-react'
 import { type CSSProperties, type FormEvent, useMemo, useState } from 'react'
 import { ingest, type IngestReport } from '../api'
+import { useEscape } from '../shell/useEscape'
 import { Card, SectionLabel } from '../design/primitives'
 import { C, F, NUM } from '../design/tokens'
 import type { DocumentInfo } from '../types'
@@ -24,6 +26,7 @@ export function LibraryDrawer({ open, docs, onClose, onIngested }: Props) {
     return [...by.entries()].sort(([a], [b]) => a.localeCompare(b))
   }, [docs, filter])
 
+  useEscape(open, onClose)
   if (!open) return null
   const indexed = docs.filter((d) => d.indexed).length
   return (
@@ -35,7 +38,7 @@ export function LibraryDrawer({ open, docs, onClose, onIngested }: Props) {
         style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.45)', border: 'none', cursor: 'pointer' }}
       />
       <aside
-        className="anim-fade-up"
+        className="anim-slide"
         style={{
           position: 'relative',
           width: '100%',
@@ -50,7 +53,7 @@ export function LibraryDrawer({ open, docs, onClose, onIngested }: Props) {
         <header style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', padding: '20px 20px 14px', borderBottom: `1px solid ${C.rule}` }}>
           <div>
             <SectionLabel>Library</SectionLabel>
-            <div style={{ fontFamily: F.display, fontWeight: 600, fontSize: 30, lineHeight: 1.05, marginTop: 4, color: C.text }}>
+            <div style={{ fontFamily: F.display, fontWeight: 650, fontSize: 20, lineHeight: 1.25, letterSpacing: '-0.01em', marginTop: 6, color: C.text }}>
               {indexed} filings · {new Set(docs.map((d) => d.company)).size} companies
             </div>
           </div>
@@ -58,10 +61,9 @@ export function LibraryDrawer({ open, docs, onClose, onIngested }: Props) {
             type="button"
             onClick={onClose}
             aria-label="Close"
-            className="hover-lift"
-            style={{ ...NUM, fontSize: 12, color: C.muted, background: 'transparent', border: `1px solid ${C.rule}`, borderRadius: 5, padding: '4px 9px', cursor: 'pointer' }}
+            className="btn btn-ghost btn-icon"
           >
-            ESC ✕
+            <X size={18} />
           </button>
         </header>
         <div style={{ padding: '12px 20px', borderBottom: `1px solid ${C.rule}` }}>
@@ -69,17 +71,8 @@ export function LibraryDrawer({ open, docs, onClose, onIngested }: Props) {
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
             placeholder="Filter by company or ticker"
-            style={{
-              width: '100%',
-              background: C.surface,
-              border: `1px solid ${C.rule}`,
-              borderRadius: 7,
-              padding: '8px 12px',
-              fontFamily: F.body,
-              fontSize: 13.5,
-              color: C.text,
-              outline: 'none',
-            }}
+            className="control"
+            style={{ width: '100%' }}
           />
         </div>
         <div style={{ flex: 1, overflowY: 'auto', padding: 20 }}>
@@ -87,8 +80,8 @@ export function LibraryDrawer({ open, docs, onClose, onIngested }: Props) {
             {groups.map(([company, list]) => (
               <Card key={company} style={{ breakInside: 'avoid', marginBottom: 12, padding: '12px 14px' }}>
                 <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 }}>
-                  <span style={{ fontFamily: F.display, fontWeight: 600, fontSize: 19, color: C.text }}>{company}</span>
-                  <span style={{ ...NUM, fontSize: 10, letterSpacing: '0.12em', color: C.accent }}>{list[0].ticker}</span>
+                  <span style={{ fontFamily: F.body, fontWeight: 600, fontSize: 14, color: C.text }}>{company}</span>
+                  <span style={{ ...NUM, fontSize: 12, fontWeight: 600, color: C.accent }}>{list[0].ticker}</span>
                 </div>
                 <ul style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginTop: 8 }}>
                   {list
@@ -98,11 +91,10 @@ export function LibraryDrawer({ open, docs, onClose, onIngested }: Props) {
                         key={d.doc_id}
                         title={`${d.doc_id} · period ends ${d.period_end}`}
                         style={{
-                          ...NUM,
-                          fontSize: 10,
-                          letterSpacing: '0.04em',
-                          padding: '2px 7px',
-                          borderRadius: 4,
+                          fontFamily: F.body,
+                          fontSize: 11.5,
+                          padding: '1px 7px',
+                          borderRadius: 5,
                           border: `1px ${d.indexed ? 'solid' : 'dashed'} ${C.rule}`,
                           color: d.indexed ? C.dim : C.muted,
                         }}
@@ -122,17 +114,7 @@ export function LibraryDrawer({ open, docs, onClose, onIngested }: Props) {
   )
 }
 
-const field: CSSProperties = {
-  width: '100%',
-  background: C.surface,
-  border: `1px solid ${C.rule}`,
-  borderRadius: 6,
-  padding: '7px 9px',
-  fontFamily: F.body,
-  fontSize: 13,
-  color: C.text,
-  outline: 'none',
-}
+const field: CSSProperties = { width: '100%', minWidth: 0 }
 
 function UploadForm({ onDone }: { onDone: () => void }) {
   const [busy, setBusy] = useState(false)
@@ -159,49 +141,37 @@ function UploadForm({ onDone }: { onDone: () => void }) {
   return (
     <form onSubmit={submit} style={{ borderTop: `1px solid ${C.rule}`, background: C.surface, padding: '14px 20px 18px', display: 'grid', gap: 10 }}>
       <SectionLabel>Add a filing</SectionLabel>
-      <input name="file" type="file" accept="application/pdf" required style={{ fontFamily: F.mono, fontSize: 11, color: C.dim }} />
+      <input name="file" type="file" accept="application/pdf" required style={{ fontFamily: F.body, fontSize: 12.5, color: C.dim }} />
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8 }}>
-        <input name="ticker" required placeholder="Ticker" style={field} />
-        <input name="company" required placeholder="Company" style={field} />
-        <select name="doc_type" defaultValue="annual_report" style={field}>
+        <input name="ticker" required placeholder="Ticker" className="control" style={field} />
+        <input name="company" required placeholder="Company" className="control" style={field} />
+        <select name="doc_type" defaultValue="annual_report" className="control" style={field}>
           <option value="annual_report">Annual report</option>
           <option value="10-K">10-K</option>
           <option value="10-Q">10-Q</option>
           <option value="20-F">20-F</option>
           <option value="earnings_call">Earnings call</option>
         </select>
-        <input name="fiscal_year" type="number" required defaultValue={2025} aria-label="Fiscal year (year it ends)" style={field} />
-        <select name="period" defaultValue="FY" style={field}>
+        <input name="fiscal_year" type="number" required defaultValue={2025} aria-label="Fiscal year (year it ends)" className="control" style={field} />
+        <select name="period" defaultValue="FY" className="control" style={field}>
           {['FY', 'Q1', 'Q2', 'Q3', 'Q4'].map((p) => (
             <option key={p}>{p}</option>
           ))}
         </select>
-        <input name="fiscal_year_end_month" type="number" min={1} max={12} defaultValue={3} aria-label="Fiscal year end month" style={field} />
+        <input name="fiscal_year_end_month" type="number" min={1} max={12} defaultValue={3} aria-label="Fiscal year end month" className="control" style={field} />
       </div>
-      <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontFamily: F.mono, fontSize: 10.5, color: C.muted }}>
+      <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontFamily: F.body, fontSize: 12.5, color: C.muted }}>
         <input type="checkbox" name="parser" value="docling" /> Accurate tables (Docling, a few minutes)
       </label>
       <button
         type="submit"
         disabled={busy}
-        style={{
-          background: C.accent,
-          color: C.onAccent,
-          border: 'none',
-          borderRadius: 7,
-          padding: '9px 0',
-          fontFamily: F.display,
-          fontWeight: 600,
-          fontSize: 16,
-          letterSpacing: '0.08em',
-          textTransform: 'uppercase',
-          cursor: busy ? 'default' : 'pointer',
-          opacity: busy ? 0.5 : 1,
-        }}
+        className="btn btn-primary"
       >
+        <Upload size={15} />
         {busy ? 'Parsing and indexing…' : 'Upload and index'}
       </button>
-      {msg && <p style={{ fontFamily: F.mono, fontSize: 11, color: msg.ok ? C.verified : C.warn }}>{msg.text}</p>}
+      {msg && <p style={{ fontFamily: F.body, fontSize: 12.5, color: msg.ok ? C.verified : C.warn }}>{msg.text}</p>}
     </form>
   )
 }

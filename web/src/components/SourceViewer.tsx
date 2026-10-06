@@ -1,3 +1,4 @@
+import { ChevronLeft, ChevronRight, ExternalLink, FileText } from 'lucide-react'
 import { useState } from 'react'
 import { pageImageUrl, pdfUrl } from '../api'
 import { EmptyState, PageSkeleton, SectionLabel } from '../design/primitives'
@@ -9,11 +10,12 @@ interface Props {
 }
 
 const navBtn = {
-  ...NUM,
-  fontSize: 13,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
   width: 28,
-  height: 26,
-  borderRadius: 5,
+  height: 28,
+  borderRadius: 7,
   border: `1px solid ${C.rule}`,
   background: C.surface,
   color: C.dim,
@@ -30,11 +32,10 @@ export function SourceViewer({ citation }: Props) {
     return (
       <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <EmptyState>
-          SOURCE VIEWER
+          <FileText size={22} style={{ margin: '0 auto 8px', display: 'block' }} />
+          <span style={{ fontWeight: 600, color: C.dim }}>Source viewer</span>
           <br />
-          <span style={{ letterSpacing: '0.04em', fontFamily: F.body, fontSize: 13 }}>
-            Click a citation to open the filing page it came from.
-          </span>
+          Click a citation to open the filing page it came from.
         </EmptyState>
       </div>
     )
@@ -58,45 +59,35 @@ export function SourceViewer({ citation }: Props) {
         <div style={{ flex: 1, minWidth: 0 }}>
           <SectionLabel>Source</SectionLabel>
           <div
-            style={{ fontFamily: F.display, fontWeight: 600, fontSize: 22, lineHeight: 1.1, marginTop: 3, color: C.text }}
+            style={{ fontFamily: F.display, fontWeight: 600, fontSize: 16, lineHeight: 1.3, marginTop: 4, color: C.text }}
             className="truncate"
           >
             {citation.company} · {citation.fiscal_label}
           </div>
-          <div className="truncate" style={{ fontFamily: F.mono, fontSize: 10.5, color: C.muted, marginTop: 2, letterSpacing: '0.04em' }}>
+          <div className="truncate" style={{ fontFamily: F.body, fontSize: 12, color: C.muted, marginTop: 2 }}>
             {citation.doc_id} · {citation.section}
             {citation.chunk_type === 'table' ? ' · table' : ''}
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <button type="button" onClick={() => setPage((p) => Math.max(1, p - 1))} style={navBtn} className="hover-lift" aria-label="Previous page">
-            ‹
+            <ChevronLeft size={15} />
           </button>
           <span style={{ ...NUM, fontSize: 11.5, minWidth: 70, textAlign: 'center', color: C.text }}>
             p.{page}
             {onCitedPage ? '' : <span style={{ color: C.muted }}> · cited {citation.page}</span>}
           </span>
           <button type="button" onClick={() => setPage((p) => p + 1)} style={navBtn} className="hover-lift" aria-label="Next page">
-            ›
+            <ChevronRight size={15} />
           </button>
         </div>
         <a
           href={pdfUrl(citation.doc_id, page)}
           target="_blank"
           rel="noreferrer"
-          className="hover-lift"
-          style={{
-            fontFamily: F.mono,
-            fontSize: 10,
-            letterSpacing: '0.18em',
-            textTransform: 'uppercase',
-            color: C.accent,
-            border: `1px solid ${C.edge}`,
-            borderRadius: 5,
-            padding: '6px 10px',
-          }}
+          className="btn btn-secondary btn-sm"
         >
-          Open PDF ↗
+          Open PDF <ExternalLink size={13} />
         </a>
       </div>
 
@@ -154,10 +145,9 @@ export function SourceViewer({ citation }: Props) {
             gap: 8,
             borderTop: `1px solid ${C.rule}`,
             padding: '8px 16px',
-            fontFamily: F.mono,
-            fontSize: 10.5,
+            fontFamily: F.body,
+            fontSize: 12,
             color: C.muted,
-            letterSpacing: '0.04em',
           }}
         >
           <span style={{ width: 10, height: 10, borderRadius: 2, background: 'rgba(252, 211, 77, 0.8)' }} />

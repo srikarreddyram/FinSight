@@ -26,17 +26,11 @@ export function SignalLab() {
   return (
     <Page
       title="Signal Lab"
-      lead="How well each signal, on its own, ranked stocks by their next 12 months of return relative to the S&P 500. Switch indexes to see the same study among large (S&P 500), mid (S&P 400) or small (S&P 600) companies only. Rank IC is the correlation between the signal’s ranking and the outcome’s: 0 is no skill, and 0.05 sustained over years is a strong single signal."
       error={error}
       loading={!data}
     >
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-        <select
-          value={family}
-          onChange={(e) => setFamily(e.target.value)}
-          aria-label="Signal family"
-          style={{ fontFamily: F.mono, fontSize: 11, padding: '7px 10px', borderRadius: 6, background: C.surface, color: C.text, border: `1px solid ${C.rule}` }}
-        >
+        <select value={family} onChange={(e) => setFamily(e.target.value)} aria-label="Signal family" className="control">
           <option value="">All families</option>
           {families.map((f) => (
             <option key={f}>{f}</option>
@@ -69,10 +63,10 @@ export function SignalLab() {
                 <th className="left" style={{ minWidth: 240 }}>
                   {index ? `Mean rank IC, ${index} months only` : 'Mean rank IC, 2011–2025'}
                 </th>
-                <th title="t-statistic on yearly mean ICs: monthly ICs of a 12-month outcome overlap, so yearly means are the honest sample">t-stat</th>
+                <th>t-stat</th>
                 <th>Years positive</th>
-                <th title="Average 12-month excess return of the top fifth minus the bottom fifth">Top − bottom fifth</th>
-                <th title="Share of stock-months where the signal can be computed">Coverage</th>
+                <th>Top − bottom fifth</th>
+                <th>Coverage</th>
               </tr>
             </thead>
             <tbody>
@@ -120,7 +114,6 @@ export function SignalLab() {
 
       <ChartCard
         title="Rank IC by year"
-        note="One row per signal, one column per year, across all three indexes. A signal worth trusting is the same colour most years, not strong on average because of one."
         table={
           <table className="dash-table">
             <thead>

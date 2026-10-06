@@ -11,20 +11,37 @@ Spec: [platform PRD, Module 6](PRD.md). The output is a ranked research watchlis
 | Confidence band | `recs/build.py` | What stocks in the same predicted decile actually returned in the walk-forward test years (quartiles of 12-month excess return) |
 | Risk components | `recs/build.py` | Realised volatility and severe-loss rate of the same predicted decile in the test years. The classifier's raw scores are class-weighted, so they are never shown as probabilities |
 | API | `recs/api.py` | `/recs/meta`, `/recs/watchlist`, `/recs/company/{ticker}`, `/recs/signals`, `/recs/backtest`, `/recs/risk`, mounted on the Copilot's FastAPI app |
-| Dashboard | `web/src/pages/` | Watchlist (filters by sector, index, risk grade, market cap; risk-adjusted view), Company, Signal Lab, Backtest, Risk, Methodology, behind a hash router; the Copilot stays at `/` |
+| Dashboard | `web/src/pages/` | Watchlist (filters by sector, index, risk grade, market cap; risk-adjusted view), Company, Signal Lab, Backtest, Risk, behind a hash router; the Copilot stays at `/` |
 | Charts | `web/src/charts/` | Line, column, heatmap and stacked bars in plain SVG/HTML: crosshair or per-mark hover, keyboard focus, a legend for two or more series, and a table view of the same numbers |
 
 Run it: `uv run python -m recs.build`, `uv run uvicorn app.api:app`, and `npm run dev` in `web/`. `FINSIGHT_THREADS` caps the threads and workers the builds use (default 6; 3 keeps a laptop cool and was no slower).
 
 Since [Phase D](phase-d-universe.md) the dashboard runs on the S&P 500, 400 and 600 (about 1,500 companies): the Watchlist has an index column and filter, the Signal Lab can show the study inside one index, and the Backtest and Risk pages add a table of the same test inside each index, with the style-neutral ICs and survivorship gaps from `models/checks.py`.
 
+## Interface
+
+The web app is one product with a fixed left rail and a top bar, not a set of separate pages:
+
+- **Navigation.** A sidebar groups the screens (Research: Copilot, Watchlist; Models: Signal Lab, Backtest, Risk; Library: the indexed filings and uploads) and shows the data's as-of month and API status. On narrow screens it becomes a drawer behind a menu button. The top bar carries a breadcrumb (a company page sits under the Watchlist).
+- **Search (⌘K or Ctrl+K).** Finds any of the ~1,500 companies by ticker or name, jumps to any page, or hands the text to the Copilot as a question. Arrow keys and Enter, Escape to close.
+- **Theme.** Light, dark or follow the OS, chosen in the sidebar and remembered per browser; applied before first paint, so a reload never flashes the other theme.
+- **Type and controls.** Inter throughout, with tabular figures in numeric columns and a true minus sign for negatives; JetBrains Mono only for commands and IDs. One set of controls (`.control`, `.btn`, `.chip` in `index.css`, `Segmented`, `Badge`, `Panel` in `design/primitives.tsx`), so every filter and button behaves the same.
+- **Watchlist.** Sortable, 50 rows a page, whole rows open the company page, a clear-filters action and an empty state, and CSV export of exactly the filtered rows.
+- **Company page.** A header with index, sector and market cap, the key figures in one strip, and an "Ask the Copilot" action when the company's filings are indexed.
+- **No explanations in the app.** Pages show titles, figures, charts, tables and actions only; there is no methodology page, no captions explaining the models, no validation verdicts and no pipeline trace in the Copilot (it always runs the full pipeline, E). How the numbers are made, their caveats and the honest model results live in these docs. The footer carries one line: "For research only. Not investment advice."
+- **Copilot.** An ask box, example questions and recent questions; the answer with its verified-figure badges and page citations beside the source page, rows used highlighted.
+- **Loading and errors.** Skeletons in the shape of the page while data loads; an error names what to check (the API, or the data build) rather than "something went wrong".
+- **Keyboard and motion.** Every control is reachable by keyboard with a visible focus ring; drawers and dialogs close with Escape; motion is short and switched off under reduced-motion settings.
+
+Checked by screenshots of every page in light and dark at desktop width, phone layouts at 390px, the search palette, the mobile menu, the library drawer and an answered Copilot question.
+
 ## Design decisions
 
-- **Honesty in the product.** With corrected prices the return model has no proven edge, so the Watchlist, Company and Methodology pages say so directly, and the Risk page states that the grades add little to trailing volatility, with the comparison shown. Every page carries the research-and-education disclaimer.
+- **Honesty lives in the docs.** The return model has no proven edge and the risk grades add little to trailing volatility; [phase-b-signals.md](phase-b-signals.md), [phase-b2-risk.md](phase-b2-risk.md) and [phase-d-universe.md](phase-d-universe.md) say so with the numbers and baselines. The app itself is kept to the product (an earlier version explained all of this on every page; that was removed at the user's request).
 - **Chart colours are validated, not picked.** A positive/negative pair and a five-step single-hue ramp for the ordered risk grades, each checked for colour-blind separation and contrast on the light and dark card surfaces. Grades always show their number and name beside the colour.
 - **Baselines in one gray.** On the backtest chart the question is whether the ranker separates from the baselines, so they share the de-emphasis colour and the table view names each one.
 
-## Not built (stated on the Company page)
+## Not built
 
 - The Analyst Agent's cited thesis (Module 2 is still a side track).
 - The XBRL cross-check status for each figure shown.
@@ -33,4 +50,4 @@ Since [Phase D](phase-d-universe.md) the dashboard runs on the S&P 500, 400 and 
 ## Checks
 
 - `tests/test_recs.py`, `tests/test_recs_api.py`: formats, deciles, driver merging and non-event filtering, API payloads and nulls, 404 and not-built responses.
-- Pages reviewed in a browser in light and dark mode. The light-mode check caught the grade colours being dropped by Tailwind's theme tree-shaking (the variable names are computed), fixed by defining them in plain `:root`.
+- Pages reviewed by screenshot in light and dark mode, at desktop width and in a 390px phone frame. The light-mode check caught the grade colours being dropped by Tailwind's theme tree-shaking (the variable names are computed), fixed by defining them in plain `:root`.

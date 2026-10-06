@@ -1,4 +1,4 @@
-// Design tokens: the Shot Vision design-system structure with FinSight's own colour scheme.
+// Design tokens for FinSight's interface.
 // Components import these instead of typing literals, so no page drifts from the system by typo.
 // Every colour is a CSS variable defined in index.css (light and dark), so theming stays in one place.
 import type { CSSProperties } from 'react'
@@ -26,13 +26,18 @@ export const C = {
   red: 'var(--color-red)', // errors
 } as const
 
+// One UI face (Inter) for everything people read, with tabular figures wherever numbers line up; a monospace
+// face only for code-like strings (accession numbers, commands). `display` and `mono` are kept as names so
+// headlines and data labels can still be told apart in code, but both are Inter now.
+const SANS = "'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif"
 export const F = {
-  display: "'Barlow Condensed', 'Arial Narrow', sans-serif", // headlines, big numbers: condensed, used sparingly
-  mono: "'JetBrains Mono', ui-monospace, monospace", // ALL data, labels, captions, eyebrows
-  body: "'Inter', ui-sans-serif, system-ui, sans-serif", // anything read at length
+  display: SANS, // page titles and big numbers
+  mono: SANS, // data labels and captions (figures get NUM's tabular-nums)
+  body: SANS, // anything read at length
+  code: "'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace", // commands, IDs
 } as const
 
-// Mono numerals still need tabular-nums to line up in columns.
+// Figures line up in columns.
 export const NUM: CSSProperties = { fontFamily: F.mono, fontVariantNumeric: 'tabular-nums' }
 
 // Quality ramp for relevance scores. The accent sits at "partial match" on purpose, so an average result

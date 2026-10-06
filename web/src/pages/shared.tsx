@@ -1,32 +1,56 @@
 // Pieces every dashboard page uses: the page frame with its standing disclaimer, grade and band marks.
 import type { ReactNode } from 'react'
-import { Card, ErrorState } from '../design/primitives'
+import { Card, DashboardSkeleton, ErrorState } from '../design/primitives'
 import { C, F, GRADE_LABELS, NUM, gradeColor } from '../design/tokens'
 import { pct } from '../recs/format'
 import type { Band } from '../recs/types'
 
-export function Page({ title, lead, aside, error, loading, children }: { title: string; lead: ReactNode; aside?: ReactNode; error?: string | null; loading?: boolean; children?: ReactNode }) {
+export function Page({
+  title,
+  lead,
+  aside,
+  meta,
+  error,
+  loading,
+  children,
+}: {
+  title: ReactNode
+  lead?: ReactNode
+  aside?: ReactNode
+  meta?: ReactNode
+  error?: string | null
+  loading?: boolean
+  children?: ReactNode
+}) {
   return (
-    <main style={{ maxWidth: 1400, margin: '0 auto', padding: '26px 20px 48px' }}>
-      <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 20, flexWrap: 'wrap', marginBottom: 18 }}>
-        <div style={{ minWidth: 0 }}>
-          <h1 style={{ fontFamily: F.display, fontWeight: 700, fontSize: 40, lineHeight: 1, letterSpacing: '0.02em', textTransform: 'uppercase', margin: 0, textWrap: 'balance' }}>{title}</h1>
-          <p style={{ fontFamily: F.body, fontSize: 14, color: C.muted, margin: '10px 0 0', maxWidth: 760, lineHeight: 1.6 }}>{lead}</p>
+    <main style={{ maxWidth: 1440, margin: '0 auto', padding: 'clamp(16px, 2.4vw, 28px)', paddingBottom: 40 }}>
+      <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap', marginBottom: 20 }}>
+        <div style={{ minWidth: 0, flex: '1 1 480px' }}>
+          {meta && <div style={{ marginBottom: 8 }}>{meta}</div>}
+          <h1 style={{ fontFamily: F.display, fontWeight: 650, fontSize: 24, lineHeight: 1.2, letterSpacing: '-0.015em', margin: 0, color: C.text, textWrap: 'balance' }}>{title}</h1>
+          {lead && <div style={{ fontFamily: F.body, fontSize: 14, color: C.muted, margin: '6px 0 0', maxWidth: 820, lineHeight: 1.6 }}>{lead}</div>}
         </div>
         {aside}
       </div>
       {error ? (
-        <ErrorState title="The dashboard data didn’t load" message={error} hint="start the API with `uv run uvicorn app.api:app`, and build the data with `uv run python -m recs.build`" />
+        <ErrorState
+          title="The dashboard data didn’t load"
+          message={error}
+          hint={
+            <>
+              start the API with <code style={{ fontFamily: F.code, fontSize: 12 }}>uv run uvicorn app.api:app</code>, and build the data with{' '}
+              <code style={{ fontFamily: F.code, fontSize: 12 }}>uv run python -m recs.build</code>
+            </>
+          }
+        />
       ) : loading ? (
-        <Card style={{ padding: 28, fontFamily: F.mono, fontSize: 11, letterSpacing: '0.18em', color: C.muted, textTransform: 'uppercase' }}>Loading…</Card>
+        <DashboardSkeleton />
       ) : (
-        <div className="anim-fade-up" style={{ display: 'grid', gap: 16 }}>
+        <div className="anim-fade-up" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 16 }}>
           {children}
         </div>
       )}
-      <p style={{ fontFamily: F.body, fontSize: 12, color: C.muted, marginTop: 26, lineHeight: 1.6, maxWidth: 860 }}>
-        FinSight is a research and education tool. Its ranks and grades describe statistical patterns in public filings and prices; they are not personal financial advice and not a recommendation to buy or sell anything.
-      </p>
+      <p style={{ fontFamily: F.body, fontSize: 12, color: C.muted, marginTop: 28, paddingTop: 14, borderTop: `1px solid ${C.rule}` }}>For research only. Not investment advice.</p>
     </main>
   )
 }
@@ -37,8 +61,8 @@ export function GradeChip({ grade, compact = false }: { grade: number | null; co
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, whiteSpace: 'nowrap' }}>
       <span aria-hidden style={{ width: 10, height: 10, borderRadius: 2, background: gradeColor(grade), flex: 'none' }} />
-      <span style={{ ...NUM, fontSize: 12, color: C.text }}>{grade}</span>
-      {!compact && <span style={{ fontFamily: F.body, fontSize: 12, color: C.dim }}>{GRADE_LABELS[grade - 1]}</span>}
+      <span style={{ ...NUM, fontSize: 13, fontWeight: 600, color: C.text }}>{grade}</span>
+      {!compact && <span style={{ fontFamily: F.body, fontSize: 13, color: C.dim }}>{GRADE_LABELS[grade - 1]}</span>}
     </span>
   )
 }
@@ -61,7 +85,7 @@ export function BandBar({ band, lo = -0.3, hi = 0.3 }: { band: Band | null; lo?:
   const x = (v: number) => `${((Math.max(lo, Math.min(hi, v)) - lo) / (hi - lo)) * 100}%`
   return (
     <span
-      title={`Middle half of outcomes: ${pct(band.p25, 0, true)} to ${pct(band.p75, 0, true)}; median ${pct(band.p50, 1, true)} (12-month return minus the S&P 500, ${band.n.toLocaleString()} past cases)`}
+      title={`${pct(band.p25, 0, true)} to ${pct(band.p75, 0, true)}, median ${pct(band.p50, 1, true)}`}
       style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}
     >
       <span aria-hidden style={{ position: 'relative', width: 92, height: 10, display: 'inline-block' }}>

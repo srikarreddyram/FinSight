@@ -1,3 +1,4 @@
+import { ArrowUp, LoaderCircle } from 'lucide-react'
 import { type CSSProperties, useEffect, useRef, useState } from 'react'
 import { C, F } from '../design/tokens'
 import { EXAMPLES } from '../examples'
@@ -40,10 +41,10 @@ export function AskBar({ busy, initial = '', onAsk, showExamples = true }: Props
           gap: 8,
           background: C.surface,
           border: `1px solid ${focused ? C.accent : C.rule}`,
-          borderRadius: 10,
-          padding: 8,
-          transition: 'border-color 200ms, box-shadow 200ms',
-          boxShadow: focused ? `0 0 0 4px ${C.hover}` : 'none',
+          borderRadius: 12,
+          padding: 7,
+          transition: 'border-color 150ms, box-shadow 150ms',
+          boxShadow: focused ? `0 0 0 3px ${C.hover}` : 'var(--shadow-card)',
           animation: busy ? 'accentPulse 1.8s ease infinite' : undefined,
         }}
       >
@@ -80,40 +81,17 @@ export function AskBar({ busy, initial = '', onAsk, showExamples = true }: Props
             } as CSSProperties
           }
         />
-        <span
-          aria-hidden
-          style={{ fontFamily: F.mono, fontSize: 10, color: C.muted, alignSelf: 'center', letterSpacing: '0.1em', paddingRight: 4 }}
-          className="hidden sm:inline"
-        >
+        <span aria-hidden className="kbd hidden sm:inline" style={{ alignSelf: 'center', marginRight: 2 }}>
           {focused ? '↵' : '/'}
         </span>
-        <button
-          type="button"
-          onClick={submit}
-          disabled={busy || !q.trim()}
-          style={{
-            height: 40,
-            flexShrink: 0,
-            background: C.accent,
-            color: C.onAccent,
-            border: 'none',
-            borderRadius: 7,
-            padding: '0 18px',
-            fontFamily: F.display,
-            fontWeight: 600,
-            fontSize: 17,
-            letterSpacing: '0.08em',
-            textTransform: 'uppercase',
-            cursor: busy || !q.trim() ? 'default' : 'pointer',
-            opacity: busy || !q.trim() ? 0.45 : 1,
-            transition: 'opacity 200ms',
-          }}
-        >
+        <button type="button" onClick={submit} disabled={busy || !q.trim()} className="btn btn-primary" style={{ height: 40, flexShrink: 0, borderRadius: 9, padding: '0 14px', fontWeight: 600 }}>
+          {busy ? <LoaderCircle size={16} className="animate-spin" /> : <ArrowUp size={16} strokeWidth={2.4} />}
           {busy ? 'Reading…' : 'Ask'}
         </button>
       </div>
       {showExamples && (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginTop: 12 }}>
+          <span style={{ fontFamily: F.body, fontSize: 12.5, color: C.muted, marginRight: 2 }}>Try</span>
           {EXAMPLES.map((ex) => (
             <button
               key={ex}
@@ -126,9 +104,8 @@ export function AskBar({ busy, initial = '', onAsk, showExamples = true }: Props
               className="hover-lift"
               title={ex}
               style={{
-                fontFamily: F.mono,
-                fontSize: 10.5,
-                letterSpacing: '0.02em',
+                fontFamily: F.body,
+                fontSize: 12.5,
                 color: C.dim,
                 background: C.surface,
                 border: `1px solid ${C.rule}`,

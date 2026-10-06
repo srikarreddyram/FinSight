@@ -6,6 +6,8 @@ import { defineConfig } from 'vite'
 const API = process.env.FINSIGHT_API ?? 'http://localhost:8000'
 
 export default defineConfig({
+  // The hosted demo lives under /FinSight/ on GitHub Pages; locally the app is served from the root.
+  base: process.env.FINSIGHT_BASE ?? '/',
   plugins: [react(), tailwindcss()],
   server: {
     proxy: {

@@ -127,17 +127,34 @@ def filings_8k(submissions: dict, cik: int, since: date) -> list[Evidence]:
     return out
 
 
-def sec_8k(cik: int, since: date) -> list[Evidence]:
+def earnings_dates(submissions: dict, since: date) -> list[date]:
+    """Days the company filed an 8-K reporting results (item 2.02), oldest first."""
+    rec = submissions["filings"]["recent"]
+    out = {
+        date.fromisoformat(filed)
+        for form, filed, items in zip(rec["form"], rec["filingDate"], rec.get("items") or [""] * len(rec["form"]), strict=False)
+        if form == "8-K" and "2.02" in (items or "").split(",") and date.fromisoformat(filed) >= since
+    }
+    return sorted(out)
+
+
+def submissions(cik: int) -> dict | None:
+    """EDGAR's submissions document for a company, fetched for a waiting page (short timeouts, quick retries)."""
     from app.config import get_settings
     from ingest.fetch_edgar import SUBMISSIONS_URL, Edgar
 
     ua = get_settings().sec_user_agent
     if not ua:
-        return []
+        return None
     edgar = Edgar(ua)
-    edgar.RETRY_WAITS = (1, 3)  # a page is waiting: fail fast rather than use the batch loaders' long backoff
+    edgar.RETRY_WAITS = (1, 3)
     edgar.http.timeout = httpx.Timeout(10)
-    return filings_8k(edgar.get(SUBMISSIONS_URL.format(cik=cik)).json(), cik, since)
+    return edgar.get(SUBMISSIONS_URL.format(cik=cik)).json()
+
+
+def sec_8k(cik: int, since: date) -> list[Evidence]:
+    sub = submissions(cik)
+    return filings_8k(sub, cik, since) if sub else []
 
 
 def evidence(name: str, cik: int | None, start: date) -> list[Evidence]:

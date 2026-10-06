@@ -1,6 +1,7 @@
 import { Upload, X } from 'lucide-react'
 import { type CSSProperties, type FormEvent, useMemo, useState } from 'react'
 import { ingest, type IngestReport } from '../api'
+import { DEMO } from '../demo'
 import { useEscape } from '../shell/useEscape'
 import { Card, SectionLabel } from '../design/primitives'
 import { C, F, NUM } from '../design/tokens'
@@ -108,7 +109,7 @@ export function LibraryDrawer({ open, docs, onClose, onIngested }: Props) {
             ))}
           </div>
         </div>
-        <UploadForm onDone={onIngested} />
+        {!DEMO && <UploadForm onDone={onIngested} />}
       </aside>
     </div>
   )

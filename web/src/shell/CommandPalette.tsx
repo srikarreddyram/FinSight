@@ -69,7 +69,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
       right: <GradeChip grade={r.risk_grade} compact />,
       run: () => go(`/company/${encodeURIComponent(r.ticker)}`),
     }))
-    const ask: Item[] = t.length > 3 ? [{ key: 'ask', group: 'Copilot', title: `Ask the filings: “${q.trim()}”`, icon: <MessageSquareText size={16} strokeWidth={1.9} />, run: () => (window.location.href = `/?q=${encodeURIComponent(q.trim())}`) }] : []
+    const ask: Item[] = t.length > 3 ? [{ key: 'ask', group: 'Copilot', title: `Ask the filings: “${q.trim()}”`, icon: <MessageSquareText size={16} strokeWidth={1.9} />, run: () => (window.location.href = `${import.meta.env.BASE_URL}?q=${encodeURIComponent(q.trim())}`) }] : []
     return t ? [...comp, ...pages, ...ask] : pages
   }, [q, rows])
 

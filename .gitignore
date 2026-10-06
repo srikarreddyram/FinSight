@@ -27,3 +27,6 @@ eval/results/*/rows.jsonl
 
 web/node_modules/
 web/dist/
+
+# Hosted demo snapshot (scripts/build_demo.py); deployed to the gh-pages branch, never committed here.
+web/public/demo/

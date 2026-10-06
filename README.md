@@ -5,6 +5,9 @@ point-in-time research platform over about 1,500 US companies: a fundamentals wa
 walk-forward return ranker with a backtest, a risk engine with a 1–5 grade, and a web app that ties them
 together.
 
+**[Live demo →](https://srikarreddyram.github.io/FinSight/)** (a snapshot: the watchlist, every company page, Movers,
+explanations of the top moves and the Copilot's example answers; run it locally for live prices and any question).
+
 Everything runs on free tools: the Gemini API free tier (or local Ollama), open-source models for search and
 reranking, DuckDB, and public data from SEC EDGAR and Yahoo Finance.
 
@@ -299,6 +302,16 @@ uv run python -m recs.build                     # the watchlist and the web app'
 ```
 
 `FINSIGHT_THREADS=3` keeps a laptop cool during the builds; `FINSIGHT_UNIVERSE=sp500` runs on large caps only.
+
+### Hosted demo
+
+The demo on GitHub Pages is the same app reading a static snapshot instead of the API (`web/src/demo.ts`).
+
+```bash
+uv run uvicorn app.api:app &                    # the snapshot is pulled from a running API
+uv run python scripts/build_demo.py             # → web/public/demo (about 40 free-tier LLM calls)
+scripts/deploy_demo.sh                          # builds in demo mode and pushes to the gh-pages branch
+```
 
 ### Web app
 

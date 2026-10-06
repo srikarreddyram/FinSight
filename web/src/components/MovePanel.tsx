@@ -8,7 +8,7 @@ import { C, CH, F, NUM } from '../design/tokens'
 import { getMove, investigateMove } from '../news/api'
 import type { Analysis, Move, MoveEvidence, MoveWindow } from '../news/types'
 import { useData } from '../pages/data'
-import { pct } from '../recs/format'
+import { money, pct } from '../recs/format'
 
 const WINDOWS: { value: MoveWindow; label: string }[] = [
   { value: '1d', label: '1D' },
@@ -116,7 +116,7 @@ function Breakdown({ move, evidence }: { move: Move; evidence: MoveEvidence[] })
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
         <span style={{ ...NUM, fontSize: 30, fontWeight: 650, letterSpacing: '-0.02em', color: tone(move.change) }}>{pct(move.change, 1, true)}</span>
         <span style={{ ...NUM, fontSize: 13, color: C.muted }}>
-          ${move.price_start.toFixed(2)} → ${move.price_end.toFixed(2)}
+          {money(move.price_start)} → {money(move.price_end)}
         </span>
       </div>
       <div style={{ display: 'grid', gap: 10, marginTop: 16 }}>

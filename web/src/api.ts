@@ -1,3 +1,4 @@
+import { DEMO, demoPage, demoRequest } from './demo'
 import type { Answer, Citation, DocumentInfo, Run } from './types'
 
 const BASE = '/api'
@@ -11,6 +12,7 @@ export class ApiError extends Error {
 }
 
 export async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  if (DEMO) return demoRequest<T>(path, init)
   let res: Response
   try {
     res = await fetch(`${BASE}${path}`, init)
@@ -58,6 +60,7 @@ export function ingest(form: FormData): Promise<IngestReport> {
 
 /** Rendered page PNG with the passages the answer used highlighted. */
 export function pageImageUrl(c: Pick<Citation, 'doc_id' | 'page' | 'highlight' | 'snippet' | 'chunk_type'>, page = c.page) {
+  if (DEMO) return demoPage(c.doc_id, page)
   const params = new URLSearchParams({
     snippet: (c.highlight || c.snippet || '').slice(0, 1500),
     rows: String(c.chunk_type === 'table'),
@@ -66,5 +69,6 @@ export function pageImageUrl(c: Pick<Citation, 'doc_id' | 'page' | 'highlight' |
 }
 
 export function pdfUrl(docId: string, page: number) {
+  if (DEMO) return demoPage(docId, page)
   return `${BASE}/documents/${encodeURIComponent(docId)}/pdf#page=${page}`
 }

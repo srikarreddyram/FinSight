@@ -2,6 +2,7 @@
 
 GET  /moves/scan?window=1w             biggest company-specific gains and falls across the universe (built in the
                                        background on first request, then cached for a few hours)
+GET  /moves/{ticker}/history?range=1y  daily closes for the price chart, with earnings days marked
 GET  /moves/{ticker}?window=1w         the move split into market, sector and company-specific parts, plus the
                                        dated news and filings, and the cached analysis if there is one
 POST /moves/{ticker}/investigate       the cited analysis (one LLM call; cached per ticker, day and window)
@@ -158,6 +159,51 @@ def scan(window: str = Window, limit: int = Query(25, ge=1, le=50)) -> dict:
 
 
 # ---------------------------------------------------------------- one company
+
+
+RANGES = {"1m": 21, "6m": 126, "1y": 252, "5y": 1260}
+_history: dict[tuple[str, str], tuple[float, pd.DataFrame]] = {}
+_earnings: dict[int, tuple[float, list]] = {}
+
+
+def _earnings_days(cik: int | None, since: date) -> list[date]:
+    if not cik:
+        return []
+    hit = _earnings.get(cik)
+    if not (hit and time.time() - hit[0] < SCAN_TTL):
+        try:
+            sub = sources.submissions(cik)
+            hit = (time.time(), sources.earnings_dates(sub, date(2000, 1, 1)) if sub else [])
+        except Exception as e:  # noqa: BLE001 - the chart works without markers
+            log.warning("earnings dates for CIK %s: %s", cik, e)
+            hit = (time.time(), [])
+        _earnings[cik] = hit
+    return [d for d in hit[1] if d >= since]
+
+
+@router.get("/{ticker}/history")
+def price_history(ticker: str, range: str = Query("1y", pattern="^(1m|6m|1y|5y)$")) -> dict:  # noqa: A002
+    row = _company(ticker)
+    period = "6y" if range == "5y" else "15mo"
+    key = (row["ticker"], period)
+    hit = _history.get(key)
+    if not (hit and time.time() - hit[0] < PRICE_TTL):
+        try:
+            hit = (time.time(), moves.yahoo_closes([row["ticker"]], period=period))
+        except ValueError as e:
+            raise HTTPException(422, str(e)) from e
+        _history[key] = hit
+    px = hit[1][row["ticker"]].dropna().iloc[-RANGES[range] - 1 :]
+    if px.empty:
+        raise HTTPException(422, f"No price history for {row['ticker']}")
+    start = px.index[0]
+    return {
+        "ticker": row["ticker"],
+        "range": range,
+        "points": [{"day": str(d), "close": round(float(v), 4)} for d, v in px.items()],
+        "change": float(px.iloc[-1] / px.iloc[0] - 1),
+        "earnings": [str(d) for d in _earnings_days(row.get("cik"), start)],
+    }
 
 
 @router.get("/{ticker}")

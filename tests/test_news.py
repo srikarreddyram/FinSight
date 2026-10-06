@@ -75,7 +75,9 @@ def test_scan_compares_with_the_market_and_the_sector():
     closes = _closes()
     df = moves.scan(closes, {"STK": "Information Technology", "SPY": None}, 5).set_index("ticker")
     change = closes.iloc[-1] / closes.iloc[-6] - 1
-    assert df.loc["STK", "change"] == pytest.approx(change["STK"]) and df.loc["STK", "price"] == pytest.approx(closes["STK"].iloc[-1])
+    assert df.loc["STK", "change"] == pytest.approx(change["STK"]) and df.loc["STK", "price"] == pytest.approx(
+        closes["STK"].iloc[-1]
+    )
     assert df.loc["STK", "vs_sector"] == pytest.approx(change["STK"] - change["XLK"])
     assert pd.isna(df.loc["SPY", "vs_sector"])  # no sector ETF to compare with
 
@@ -189,3 +191,23 @@ def test_unknown_ticker_and_bad_window(moves_client):
     client, _ = moves_client
     assert client.get("/moves/ZZZ").status_code == 404
     assert client.get("/moves/STK?window=2y").status_code == 422
+
+
+def test_earnings_days_come_from_8k_item_2_02():
+    from news.sources import earnings_dates
+
+    sub = {"filings": {"recent": {"form": ["8-K", "8-K", "10-Q", "8-K"], "filingDate": ["2026-10-01", "2026-09-15", "2026-08-01", "2026-06-26"],
+                                  "items": ["2.02,9.01", "5.02", "", "2.02"]}}}  # fmt: skip
+    assert earnings_dates(sub, date(2026, 1, 1)) == [date(2026, 6, 26), date(2026, 10, 1)]
+
+
+def test_price_history_with_earnings_markers(moves_client, monkeypatch):
+    from news import api
+
+    client, _ = moves_client
+    monkeypatch.setattr(api, "_history", {})
+    monkeypatch.setattr(api, "_earnings_days", lambda cik, since: [since])
+    body = client.get("/moves/STK/history?range=1m").json()
+    assert len(body["points"]) == 22 and body["earnings"] == [body["points"][0]["day"]]
+    assert body["change"] == pytest.approx(body["points"][-1]["close"] / body["points"][0]["close"] - 1, abs=1e-4)
+    assert client.get("/moves/STK/history?range=10y").status_code == 422

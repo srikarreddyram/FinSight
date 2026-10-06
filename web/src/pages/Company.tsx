@@ -2,13 +2,14 @@ import { ArrowDownRight, ArrowUpRight, MessageSquareText, TrendingDown, Trending
 import { useState } from 'react'
 import { ChartCard } from '../charts/core'
 import { MovePanel } from '../components/MovePanel'
-import { getMove } from '../news/api'
+import { PriceChart } from '../components/PriceChart'
+import { getHistory } from '../news/api'
 import type { MoveWindow } from '../news/types'
 import { LineChart } from '../charts/LineChart'
 import { Avatar, Badge, Card, PanelTitle, SectionLabel, Stat, Tabs } from '../design/primitives'
 import { C, CH, F, GRADE_LABELS, NUM } from '../design/tokens'
 import { getCompany } from '../recs/api'
-import { cap, num, pct } from '../recs/format'
+import { cap, money, num, pct } from '../recs/format'
 import type { Driver } from '../recs/types'
 import { useData } from './data'
 import { BandBar, GradeChip, Page } from './shared'
@@ -45,21 +46,24 @@ const TABS: { value: Tab; label: string }[] = [
 ]
 type Tab = 'overview' | 'move' | 'signals'
 
-/** Last close and the day's change, from the live price feed. */
+/** Last close and the day's change, from the price history (the same feed as the chart). */
 function Quote({ ticker }: { ticker: string }) {
-  const { data } = useData(() => getMove(ticker, '1d'), ticker)
-  if (!data) return <div style={{ height: 52 }} aria-hidden />
-  const m = data.move
-  const up = m.change >= 0
+  const { data } = useData(() => getHistory(ticker, '1m'), ticker)
+  const pts = data?.points ?? []
+  if (pts.length < 2) return <div style={{ height: 52 }} aria-hidden />
+  const last = pts[pts.length - 1]
+  const prev = pts[pts.length - 2]
+  const change = last.close / prev.close - 1
+  const up = change >= 0
   const Arrow = up ? TrendingUp : TrendingDown
   return (
     <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
-      <span style={{ ...NUM, fontSize: 34, fontWeight: 650, letterSpacing: '-0.02em', color: C.text }}>${m.price_end.toFixed(2)}</span>
+      <span style={{ ...NUM, fontSize: 34, fontWeight: 650, letterSpacing: '-0.02em', color: C.text }}>{money(last.close)}</span>
       <span style={{ ...NUM, display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 16, fontWeight: 600, color: up ? CH.pos : CH.neg }}>
         <Arrow size={18} strokeWidth={2.4} />
-        {up ? '+' : '−'}${Math.abs(m.price_end - m.price_start).toFixed(2)} ({pct(m.change, 2, true)})
+        {up ? '+' : '−'}{money(Math.abs(last.close - prev.close))} ({pct(change, 2, true)})
       </span>
-      <span style={{ fontFamily: F.body, fontSize: 13, color: C.muted }}>1D · close {new Date(`${m.end}T00:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })}</span>
+      <span style={{ fontFamily: F.body, fontSize: 13, color: C.muted }}>1D · close {new Date(`${last.day}T00:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })}</span>
     </div>
   )
 }
@@ -69,7 +73,7 @@ export function Company({ ticker, hasFilings, initialWindow = '1w', opened = fal
   const card = data?.card
   const months = (data?.signal_history ?? []).map((r) => String(r.month).slice(0, 7))
   const name = card?.name && card.name !== card.ticker ? card.name : ticker
-  const askHref = `/?q=${encodeURIComponent(`What are the main risk factors for ${card?.name ?? ticker}?`)}`
+  const askHref = `${import.meta.env.BASE_URL}?q=${encodeURIComponent(`What are the main risk factors for ${card?.name ?? ticker}?`)}`
   // A mover link (…?w=1d) opens straight on the price move; otherwise the overview.
   const [tab, setTab] = useState<Tab>(opened ? 'move' : 'overview')
   return (
@@ -108,6 +112,7 @@ export function Company({ ticker, hasFilings, initialWindow = '1w', opened = fal
           {tab === 'move' && <MovePanel ticker={ticker} initial={initialWindow} />}
           {tab === 'overview' && (
           <>
+          <PriceChart ticker={ticker} />
           <Card style={{ padding: 0, overflow: 'hidden' }}>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 1, background: C.rule }}>
               <div style={{ background: C.surface, padding: '16px 18px' }}>

@@ -20,6 +20,12 @@ export function num(v: number | null | undefined, digits = 2, signed = false): s
   return signedFixed(v, digits, signed)
 }
 
+/** A share price: $1,091.67. */
+export function money(v: number | null | undefined): string {
+  if (v == null || Number.isNaN(v)) return DASH
+  return `$${v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+}
+
 export function cap(v: number | null | undefined): string {
   if (v == null || Number.isNaN(v)) return DASH
   if (v >= 1e12) return `$${(v / 1e12).toFixed(2)}T`

@@ -2,7 +2,10 @@
 // tab bar with a "More" sheet for the rest.
 import { Library, Menu, Monitor, Moon, Search, Sun, X } from 'lucide-react'
 import { useState } from 'react'
+import { DEMO } from '../demo'
 import { C, F } from '../design/tokens'
+
+const DEMO_AS_OF = import.meta.env.VITE_DEMO_AS_OF ?? 'the build date'
 import { NAV, sectionOf } from './routes'
 import type { ThemeChoice } from './theme'
 import { useEscape } from './useEscape'
@@ -34,8 +37,8 @@ function ThemeButton({ theme, onTheme }: { theme: ThemeChoice; onTheme: (t: Them
 
 function Brand() {
   return (
-    <a href="/" style={{ display: 'flex', alignItems: 'center', gap: 9, textDecoration: 'none', color: C.text, flex: 'none' }}>
-      <img src="/favicon.svg" alt="" width={28} height={28} style={{ borderRadius: 8 }} />
+    <a href={import.meta.env.BASE_URL} style={{ display: 'flex', alignItems: 'center', gap: 9, textDecoration: 'none', color: C.text, flex: 'none' }}>
+      <img src={`${import.meta.env.BASE_URL}favicon.svg`} alt="" width={28} height={28} style={{ borderRadius: 8 }} />
       <span style={{ fontFamily: F.display, fontWeight: 700, fontSize: 18, letterSpacing: '-0.02em' }}>FinSight</span>
     </a>
   )
@@ -45,11 +48,20 @@ export function TopNav({ route, apiDown, theme, onTheme, onSearch, onLibrary }: 
   const current = sectionOf(route)
   return (
     <header style={{ position: 'sticky', top: 0, zIndex: 30, background: C.surface, borderBottom: `1px solid ${C.rule}` }}>
+      {DEMO && (
+        <div style={{ background: C.accentSoft, color: C.dim, fontFamily: F.body, fontSize: 12.5, textAlign: 'center', padding: '6px 16px' }}>
+          Demo snapshot with prices to {DEMO_AS_OF}.{' '}
+          <a href="https://github.com/srikarreddyram/FinSight" style={{ color: C.accent, fontWeight: 600 }}>
+            Run it locally
+          </a>{' '}
+          for live prices and any question.
+        </div>
+      )}
       <div style={{ maxWidth: 1440, margin: '0 auto', height: 64, display: 'flex', alignItems: 'center', gap: 28, padding: '0 clamp(16px, 2.4vw, 28px)' }}>
         <Brand />
         <nav aria-label="Main" className="hidden lg:flex" style={{ alignItems: 'center', gap: 24, height: '100%' }}>
           {NAV.map((n) => (
-            <a key={n.path} href={n.path ? `#${n.path}` : '/'} className="topnav-link" aria-current={current?.path === n.path ? 'page' : undefined} title={n.description}>
+            <a key={n.path} href={n.path ? `#${n.path}` : import.meta.env.BASE_URL} className="topnav-link" aria-current={current?.path === n.path ? 'page' : undefined} title={n.description}>
               {n.label}
             </a>
           ))}
@@ -98,7 +110,7 @@ export function TabBar({ route, onLibrary }: { route: string; onLibrary: () => v
         {primary.map((n) => {
           const Icon = n.icon
           return (
-            <a key={n.path} href={n.path ? `#${n.path}` : '/'} className="tabbar-link" aria-current={current?.path === n.path ? 'page' : undefined}>
+            <a key={n.path} href={n.path ? `#${n.path}` : import.meta.env.BASE_URL} className="tabbar-link" aria-current={current?.path === n.path ? 'page' : undefined}>
               <Icon size={21} strokeWidth={current?.path === n.path ? 2.3 : 1.8} />
               {n.label}
             </a>

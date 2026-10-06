@@ -7,7 +7,7 @@ import { Avatar, Badge, Card, PanelTitle, Segmented, Stat } from '../design/prim
 import { C, CH, F, NUM } from '../design/tokens'
 import { getScan } from '../news/api'
 import type { MoverRow, MoveWindow, Scan } from '../news/types'
-import { pct } from '../recs/format'
+import { money, pct } from '../recs/format'
 import { Page, StatRow } from './shared'
 
 const WINDOWS: { value: MoveWindow; label: string }[] = [
@@ -106,7 +106,7 @@ function MoverTable({ title, rows, window }: { title: string; rows: MoverRow[]; 
                   </span>
                 </span>
                 <span style={{ textAlign: 'right' }}>
-                  <span style={{ ...NUM, display: 'block', fontSize: 14.5, fontWeight: 600 }}>{r.price != null ? `$${r.price.toFixed(2)}` : '–'}</span>
+                  <span style={{ ...NUM, display: 'block', fontSize: 14.5, fontWeight: 600 }}>{money(r.price)}</span>
                   <span style={{ ...NUM, display: 'block', fontSize: 13, fontWeight: 600, color: tone(r.change), marginTop: 2 }}>{pct(r.change, 2, true)}</span>
                   <span style={{ ...NUM, display: 'block', fontSize: 12, color: C.muted, marginTop: 1 }}>{pct(r.vs_sector ?? r.vs_market, 1, true)} vs sector</span>
                 </span>

@@ -34,6 +34,9 @@ The web app is one product with a fixed left rail and a top bar, not a set of se
 - **Loading and errors.** Skeletons in the shape of the page while data loads; an error names what to check (the API, or the data build) rather than "something went wrong".
 - **Keyboard and motion.** Every control is reachable by keyboard with a visible focus ring; drawers and dialogs close with Escape; motion is short and switched off under reduced-motion settings.
 
+- **Price chart.** 1M / 6M / 1Y / 5Y on every company page, green when the range ended up and red when down, with the days the company reported earnings (8-K item 2.02) marked.
+- **Hosted demo.** [srikarreddyram.github.io/FinSight](https://srikarreddyram.github.io/FinSight/) is the same build reading a static snapshot (`web/src/demo.ts`, `scripts/build_demo.py`, `scripts/deploy_demo.sh`): every company page with a year of prices, the Movers lists, about 90 price-move panels with 40 AI explanations, and the Copilot's example answers with their cited pages. Histories are stored as columns (about 25 KB a company instead of 140), and anything outside the snapshot says it needs a local run.
+
 Checked by screenshots of every page in light and dark at desktop width, phone layouts at 390px, the search palette, the mobile menu, the library drawer and an answered Copilot question.
 
 ## Design decisions

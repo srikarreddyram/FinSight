@@ -26,6 +26,8 @@ export function LineChart({
   endLabels = true,
   tickValues,
   axisFormat,
+  markers = [],
+  areaFloor = false,
 }: {
   x: string[]
   series: LineSeries[]
@@ -38,6 +40,10 @@ export function LineChart({
   step?: boolean
   endLabels?: boolean
   tickValues?: number[]
+  /** Points to call out on the first series (e.g. earnings days), drawn as small labelled dots. */
+  markers?: { index: number; label: string; short: string }[]
+  /** Fill the area down to the bottom of the plot instead of to zero (prices). */
+  areaFloor?: boolean
   /** Shorter labels for the axis when the tooltip's format is too long to fit beside it. */
   axisFormat?: (v: number) => string
 }) {
@@ -87,7 +93,10 @@ export function LineChart({
       x: clientX,
       y: clientY,
       title: x[i],
-      rows: series.filter((s) => s.values[i] != null).map((s) => ({ color: s.color, label: s.name, value: format(s.values[i] as number) })),
+      rows: [
+        ...series.filter((s) => s.values[i] != null).map((s) => ({ color: s.color, label: s.name, value: format(s.values[i] as number) })),
+        ...markers.filter((mk) => mk.index === i).map((mk) => ({ color: C.dim, label: '', value: mk.label })),
+      ],
     })
   }
   const onMove = (e: React.PointerEvent<SVGSVGElement>) => {
@@ -129,11 +138,25 @@ export function LineChart({
               ) : null,
             )}
             {area && series[0] && (
-              <path d={`${path(series[0].values)}V${py(Math.max(lo, Math.min(hi, 0)))}H${px(0)}Z`} fill={series[0].color} opacity={0.1} />
+              <path d={`${path(series[0].values)}V${py(areaFloor ? lo : Math.max(lo, Math.min(hi, 0)))}H${px(series[0].values.findIndex((v) => v != null))}Z`} fill={series[0].color} opacity={0.1} />
             )}
             {[...series].reverse().map((s) => (
               <path key={s.name} d={path(s.values)} fill="none" stroke={s.color} strokeWidth={s.context ? 1.25 : 2} strokeLinejoin="round" strokeLinecap="round" />
             ))}
+            {series[0] &&
+              markers.map((mk) => {
+                const v = series[0].values[mk.index]
+                if (v == null) return null
+                return (
+                  <g key={`mk-${mk.index}`} pointerEvents="none">
+                    <line x1={px(mk.index)} x2={px(mk.index)} y1={py(v) + 6} y2={m.t + h} stroke={C.muted} strokeWidth={1} strokeDasharray="2 3" opacity={0.6} />
+                    <circle cx={px(mk.index)} cy={m.t + h - 8} r={7} fill={C.surface} stroke={C.muted} strokeWidth={1} />
+                    <text x={px(mk.index)} y={m.t + h - 8} textAnchor="middle" dominantBaseline="central" style={{ ...AXIS_TEXT, fontSize: 8.5, fontWeight: 700, fill: C.dim }}>
+                      {mk.short}
+                    </text>
+                  </g>
+                )
+              })}
             {labelled.map((s) => {
               const last = s.values.findLastIndex((v) => v != null)
               if (last < 0) return null

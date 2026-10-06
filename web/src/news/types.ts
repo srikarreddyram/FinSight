@@ -1,5 +1,14 @@
 // Shapes served by /moves/* (news/api.py).
 export type MoveWindow = '1d' | '1w' | '1m'
+export type PriceRange = '1m' | '6m' | '1y' | '5y'
+
+export interface PriceHistory {
+  ticker: string
+  range: PriceRange
+  points: { day: string; close: number }[]
+  change: number
+  earnings: string[]
+}
 
 export interface MoveEvidence {
   id: string

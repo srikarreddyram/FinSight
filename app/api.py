@@ -8,6 +8,7 @@ GET  /documents/{doc_id}/pdf           the source PDF (open at #page=N)
 GET  /documents/{doc_id}/page/{n}.png  rendered page, cited passage highlighted (?snippet=...)
 POST /ingest                           upload a filing PDF and index it
 GET  /recs/...                         the research dashboard's data (see recs/api.py)
+GET  /moves/...                        what is moving a stock: market, sector, company, news (see news/api.py)
 """
 
 from __future__ import annotations
@@ -26,6 +27,7 @@ from pydantic import BaseModel
 from app.config import get_settings
 from app.pipeline import RUNS, get_pipeline
 from app.schemas import Answer, Company, DocMeta
+from news.api import router as moves_router
 from recs.api import router as recs_router
 
 log = logging.getLogger(__name__)
@@ -44,6 +46,7 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(title="FinSight", version="0.1.0", description="Citation-first RAG over company filings", lifespan=lifespan)
 app.include_router(recs_router)
+app.include_router(moves_router)
 _ingest_lock = threading.Lock()
 
 

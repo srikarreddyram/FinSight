@@ -1,13 +1,25 @@
-import { useMemo } from 'react'
+// Risk: the five grades as a ladder (how many companies hold each now, and how often stocks graded that way fell
+// 40% or more within a year), the month's grade changes, what drives the grades, and how they spread across
+// indexes and sectors.
+import { Activity, ArrowDown, ArrowRight, ArrowUp, Calculator, FileText, Landmark, ShieldAlert, Zap, type LucideIcon } from 'lucide-react'
+import { useMemo, useState } from 'react'
 import { ChartCard } from '../charts/core'
-import { ColumnChart } from '../charts/ColumnChart'
 import { StackedBars } from '../charts/StackedBars'
-import { Card, PanelTitle, Stat } from '../design/primitives'
-import { C, F, GRADE_LABELS, gradeColor } from '../design/tokens'
+import { Avatar, Card, PanelTitle } from '../design/primitives'
+import { C, F, GRADE_LABELS, NUM, gradeColor } from '../design/tokens'
 import { getRisk, getWatchlist } from '../recs/api'
 import { pct } from '../recs/format'
-import { link, useData } from './data'
-import { GradeChip, Page, StatRow } from './shared'
+import type { WatchRow } from '../recs/types'
+import { useData } from './data'
+import { GradeChip, Page } from './shared'
+
+const PILLAR_ICON: Record<string, LucideIcon> = {
+  'Market risk': Activity,
+  'Disclosure risk': FileText,
+  'Financial health': Landmark,
+  'Earnings quality': Calculator,
+  'Event risk': Zap,
+}
 
 export function Risk() {
   const { data, error } = useData(getRisk)
@@ -21,157 +33,165 @@ export function Risk() {
     }
     return [...by.entries()].map(([label, counts]) => ({ label, counts })).sort((a, b) => a.label.localeCompare(b.label))
   }, [data])
-  const changes = useMemo(
-    () => (watch ?? []).filter((r) => r.risk_grade != null && r.previous_grade != null && r.risk_grade !== r.previous_grade).sort((a, b) => (b.risk_grade! - b.previous_grade!) - (a.risk_grade! - a.previous_grade!)),
-    [watch],
-  )
-  const severe = (watch ?? []).filter((r) => r.risk_grade === 5).length
-  const upgrades = changes.filter((r) => r.risk_grade! > r.previous_grade!).length
+  const counts = useMemo(() => [1, 2, 3, 4, 5].map((g) => (watch ?? []).filter((r) => r.risk_grade === g).length), [watch])
+  const changed = useMemo(() => (watch ?? []).filter((r) => r.risk_grade != null && r.previous_grade != null && r.risk_grade !== r.previous_grade).sort((a, b) => (b.market_cap ?? 0) - (a.market_cap ?? 0)), [watch])
+  const raised = changed.filter((r) => r.risk_grade! > r.previous_grade!)
+  const lowered = changed.filter((r) => r.risk_grade! < r.previous_grade!)
   const pillars = Object.entries(data?.pillars ?? {}).sort((a, b) => b[1] - a[1])
+  const pillarTotal = pillars.reduce((a, [, n]) => a + n, 0) || 1
+  const maxSevere = Math.max(...(data?.calibration ?? []).map((c) => c.severe_rate), 0.01)
 
   return (
-    <Page title="Risk" error={error} loading={!data}>
+    <Page title="Risk" meta={<span style={{ fontFamily: F.body, fontSize: 13, color: C.muted }}>Grades 1 Low to 5 Severe, refreshed monthly</span>} error={error} loading={!data}>
       {data && (
         <>
-          <StatRow>
-            <Stat label="Graded Severe" value={watch ? severe.toLocaleString() : '–'} note="companies this month" />
-            <Stat label="Grade changes" value={watch ? changes.length.toLocaleString() : '–'} note={watch ? `${upgrades} up, ${changes.length - upgrades} down` : undefined} />
-            <Stat label="Severe-loss rate, grade 5" value={pct(data.calibration[4]?.severe_rate, 0)} note={`${pct(data.calibration[0]?.severe_rate, 0)} for grade 1`} />
-            <Stat label="Volatility, grade 5" value={pct(data.calibration[4]?.realised_vol, 0)} note={`${pct(data.calibration[0]?.realised_vol, 0)} for grade 1`} />
-          </StatRow>
-
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-            <ChartCard title="Severe-loss rate by grade" table={<CalibrationTable rows={data.calibration} />}>
-              <ColumnChart name="Severe-loss rate" categories={[...GRADE_LABELS]} values={data.calibration.map((c) => c.severe_rate)} color={(_, i) => gradeColor(i + 1)} format={(v) => pct(v, 0)} />
-            </ChartCard>
-            <ChartCard title="Realised volatility by grade" table={<CalibrationTable rows={data.calibration} />}>
-              <ColumnChart name="Realised volatility" categories={[...GRADE_LABELS]} values={data.calibration.map((c) => c.realised_vol)} color={(_, i) => gradeColor(i + 1)} format={(v) => pct(v, 0)} />
-            </ChartCard>
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
+            {data.calibration.map((c, i) => {
+              const g = i + 1
+              const color = gradeColor(g)
+              return (
+                <Card key={c.grade} style={{ padding: 0, overflow: 'hidden', display: 'grid' }}>
+                  <div style={{ height: 5, background: color }} />
+                  <div style={{ padding: '14px 16px 16px', display: 'grid', gap: 12 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{ ...NUM, width: 26, height: 26, borderRadius: 8, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 700, color: C.text, background: `color-mix(in srgb, ${color} 38%, var(--color-card))`, border: `1px solid ${color}` }}>{g}</span>
+                        <span style={{ fontFamily: F.body, fontSize: 14.5, fontWeight: 650, color: C.text }}>{GRADE_LABELS[i]}</span>
+                      </span>
+                      <span style={{ ...NUM, fontSize: 12.5, color: C.muted }}>{watch ? `${counts[i].toLocaleString()} now` : ''}</span>
+                    </div>
+                    <div>
+                      <div style={{ ...NUM, fontSize: 28, fontWeight: 650, letterSpacing: '-0.015em', color: C.text }}>{pct(c.severe_rate, 0)}</div>
+                      <div style={{ fontFamily: F.body, fontSize: 12, color: C.muted }}>fell 40% or more within a year</div>
+                    </div>
+                    <span aria-hidden style={{ height: 8, borderRadius: 4, background: `color-mix(in srgb, ${C.rule} 70%, transparent)`, overflow: 'hidden' }}>
+                      <span style={{ display: 'block', height: '100%', width: `${(c.severe_rate / maxSevere) * 100}%`, background: color, borderRadius: 4 }} />
+                    </span>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontFamily: F.body, fontSize: 12, color: C.muted, borderTop: `1px solid ${C.rule}`, paddingTop: 10 }}>
+                      <span>Volatility</span>
+                      <span style={{ ...NUM, fontWeight: 600, color: C.text }}>{pct(c.realised_vol, 0)}</span>
+                    </div>
+                  </div>
+                </Card>
+              )
+            })}
           </div>
+
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+            <Changes raised={raised} lowered={lowered} />
+            <Card style={{ padding: '16px 18px' }}>
+              <PanelTitle>What drives the grades</PanelTitle>
+              <ul style={{ listStyle: 'none', margin: '14px 0 0', padding: 0, display: 'grid', gap: 14 }}>
+                {pillars.map(([p, n]) => {
+                  const Icon = PILLAR_ICON[p] ?? ShieldAlert
+                  return (
+                    <li key={p} style={{ display: 'grid', gridTemplateColumns: '30px minmax(0, 1fr)', gap: 10, alignItems: 'center' }}>
+                      <span style={{ width: 30, height: 30, borderRadius: 9, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: C.accentSoft, color: C.accent }}>
+                        <Icon size={15} />
+                      </span>
+                      <span style={{ minWidth: 0, display: 'grid', gap: 5 }}>
+                        <span style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                          <span style={{ fontFamily: F.body, fontSize: 13.5, fontWeight: 600, color: C.text }}>{p}</span>
+                          <span style={{ ...NUM, fontSize: 13, color: C.dim }}>
+                            {n.toLocaleString()} <span style={{ color: C.muted }}>· {pct(n / pillarTotal, 0)}</span>
+                          </span>
+                        </span>
+                        <span aria-hidden style={{ height: 6, borderRadius: 3, background: `color-mix(in srgb, ${C.rule} 70%, transparent)` }}>
+                          <span style={{ display: 'block', height: '100%', width: `max(3px, ${(n / pillarTotal) * 100}%)`, background: C.accent, borderRadius: 3 }} />
+                        </span>
+                      </span>
+                    </li>
+                  )
+                })}
+              </ul>
+            </Card>
+          </div>
+
+          {data.by_index && data.by_index.length > 1 && (
+            <div className="grid gap-3 md:grid-cols-3">
+              {data.by_index.map((b) => (
+                <Card key={b.index} style={{ padding: 16, display: 'grid', gap: 12 }}>
+                  <span style={{ fontFamily: F.body, fontSize: 15, fontWeight: 650, color: C.text }}>{b.index}</span>
+                  <div>
+                    <div style={{ ...NUM, fontSize: 26, fontWeight: 650, letterSpacing: '-0.015em', color: C.text }}>{pct(b.severe_rate, 0)}</div>
+                    <div style={{ fontFamily: F.body, fontSize: 12, color: C.muted }}>of stocks fell 40% or more within a year</div>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, borderTop: `1px solid ${C.rule}`, paddingTop: 10 }}>
+                    <Mini label="Median volatility" value={pct(b.median_fwd_vol, 0)} />
+                    <Mini label="Graded Severe" value={pct(b.share_graded_severe, 0)} />
+                  </div>
+                </Card>
+              ))}
+            </div>
+          )}
 
           <ChartCard title="Grades by sector">
             <StackedBars rows={sectors} segments={GRADE_LABELS.map((label, i) => ({ label: `${i + 1} ${label}`, color: gradeColor(i + 1) }))} />
           </ChartCard>
-
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-            {data.by_index && data.by_index.length > 1 && (
-              <Card style={{ padding: '14px 18px 16px', minWidth: 0, overflowX: 'auto' }}>
-                <PanelTitle>By index</PanelTitle>
-                <table className="dash-table" style={{ marginTop: 10 }}>
-                  <thead>
-                    <tr>
-                      <th className="left">Index</th>
-                      <th>Severe-loss rate</th>
-                      <th>Median volatility</th>
-                      <th>Graded Severe</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.by_index.map((b) => (
-                      <tr key={b.index}>
-                        <td className="left">{b.index}</td>
-                        <td>{pct(b.severe_rate, 1)}</td>
-                        <td>{pct(b.median_fwd_vol, 0)}</td>
-                        <td>{pct(b.share_graded_severe, 0)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </Card>
-            )}
-            <Card style={{ padding: '14px 18px 16px', minWidth: 0 }}>
-              <PanelTitle>Main risk driver</PanelTitle>
-              <table className="dash-table" style={{ marginTop: 10 }}>
-                <thead>
-                  <tr>
-                    <th className="left">Pillar</th>
-                    <th>Companies</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {pillars.map(([p, n]) => (
-                    <tr key={p}>
-                      <td className="left">{p}</td>
-                      <td>{n.toLocaleString()}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </Card>
-          </div>
-
-          <Card style={{ overflow: 'hidden' }}>
-            <div style={{ padding: '14px 18px 10px' }}>
-              <PanelTitle>Grade changes this month</PanelTitle>
-            </div>
-            <div style={{ overflow: 'auto', maxHeight: 420 }}>
-              <table className="dash-table">
-                <thead>
-                  <tr>
-                    <th className="left">Company</th>
-                    <th className="left">Sector</th>
-                    <th className="left">Last month</th>
-                    <th className="left">This month</th>
-                    <th className="left">Main driver</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {changes.map((r) => (
-                    <tr key={r.ticker}>
-                      <td className="left">
-                        <a href={link(`/company/${r.ticker}`)} style={{ color: C.accent, textDecoration: 'none', fontWeight: 600 }}>
-                          {r.ticker}
-                        </a>{' '}
-                        <span style={{ fontFamily: F.body, color: C.muted }}>{r.name}</span>
-                      </td>
-                      <td className="left" style={{ fontFamily: F.body, color: C.dim }}>
-                        {r.sector}
-                      </td>
-                      <td className="left">
-                        <GradeChip grade={r.previous_grade} />
-                      </td>
-                      <td className="left">
-                        <GradeChip grade={r.risk_grade} />
-                      </td>
-                      <td className="left" style={{ fontFamily: F.body, color: C.dim }}>
-                        {r.risk_pillar}
-                        {r.risk_pillar_effect ? ` (${r.risk_pillar_effect})` : ''}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </Card>
         </>
       )}
     </Page>
   )
 }
 
-function CalibrationTable({ rows }: { rows: { grade: string; n: number; realised_vol: number; severe_rate: number }[] }) {
+function Mini({ label, value }: { label: string; value: string }) {
   return (
-    <table className="dash-table">
-      <thead>
-        <tr>
-          <th className="left">Grade</th>
-          <th>Stock-months</th>
-          <th>Realised volatility</th>
-          <th>Severe-loss rate</th>
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((r, i) => (
-          <tr key={r.grade}>
-            <td className="left">
-              <GradeChip grade={i + 1} />
-            </td>
-            <td>{r.n.toLocaleString()}</td>
-            <td>{pct(r.realised_vol, 1)}</td>
-            <td>{pct(r.severe_rate, 1)}</td>
-          </tr>
+    <div style={{ minWidth: 0 }}>
+      <div className="truncate" style={{ fontFamily: F.body, fontSize: 11.5, color: C.muted }}>
+        {label}
+      </div>
+      <div style={{ ...NUM, fontSize: 14, fontWeight: 600, color: C.text, marginTop: 2 }}>{value}</div>
+    </div>
+  )
+}
+
+/** This month's grade changes, largest companies first: raised on one side, lowered on the other. */
+function Changes({ raised, lowered }: { raised: WatchRow[]; lowered: WatchRow[] }) {
+  const [all, setAll] = useState(false)
+  const n = all ? Infinity : 6
+  const column = (title: string, Icon: LucideIcon, rows: WatchRow[], color: string) => (
+    <div style={{ minWidth: 0 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontFamily: F.body, fontSize: 12.5, fontWeight: 600, letterSpacing: '0.03em', textTransform: 'uppercase', color: C.muted, marginBottom: 4 }}>
+        <Icon size={13} color={color} /> {title} <span style={{ ...NUM, color: C.dim }}>{rows.length}</span>
+      </div>
+      <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+        {rows.slice(0, n).map((r) => (
+          <li key={r.ticker}>
+            <a href={`#/company/${encodeURIComponent(r.ticker)}`} className="hover-lift" style={{ display: 'grid', gridTemplateColumns: '32px minmax(0, 1fr) auto', gap: 10, alignItems: 'center', padding: '8px 6px', borderRadius: 8, border: '1px solid transparent', textDecoration: 'none', color: C.text }}>
+              <Avatar ticker={r.ticker} name={r.name} size={32} />
+              <span style={{ minWidth: 0 }}>
+                <span className="truncate" style={{ display: 'block', fontFamily: F.body, fontSize: 13.5, fontWeight: 600 }}>
+                  {r.name ?? r.ticker}
+                </span>
+                <span className="truncate" style={{ display: 'block', fontFamily: F.body, fontSize: 12, color: C.muted }}>
+                  {r.ticker} · {r.risk_pillar ?? r.sector}
+                </span>
+              </span>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                <GradeChip grade={r.previous_grade} compact />
+                <ArrowRight size={13} color={C.muted} />
+                <GradeChip grade={r.risk_grade} compact />
+              </span>
+            </a>
+          </li>
         ))}
-      </tbody>
-    </table>
+      </ul>
+    </div>
+  )
+  return (
+    <Card style={{ padding: '16px 18px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 12 }}>
+        <PanelTitle>Grade changes this month</PanelTitle>
+        {(raised.length > 6 || lowered.length > 6) && (
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setAll((a) => !a)}>
+            {all ? 'Show fewer' : `Show all ${raised.length + lowered.length}`}
+          </button>
+        )}
+      </div>
+      <div className="grid gap-x-6 gap-y-4 md:grid-cols-2">
+        {column('Raised', ArrowUp, raised, gradeColor(5))}
+        {column('Lowered', ArrowDown, lowered, gradeColor(1))}
+      </div>
+    </Card>
   )
 }

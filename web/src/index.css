@@ -58,11 +58,11 @@
   --map-neg: #d6402b;
   --map-mid: #6b7080;
   --chart-context: #b4b6bf;
-  --grade-1: #fa9d68;
-  --grade-2: #db814c;
-  --grade-3: #bc662f;
-  --grade-4: #9f4b0b;
-  --grade-5: #823000;
+  --grade-1: #22a06b;
+  --grade-2: #8fb83a;
+  --grade-3: #e2a524;
+  --grade-4: #ec7a33;
+  --grade-5: #d93a2f;
 }
 
 /* Dark values, twice: once for "follow the OS" and once for an explicit choice. Keep the two blocks equal. */
@@ -108,11 +108,11 @@
     --map-mid: #454951;
     --chart-context: #5b5e66;
     /* On a dark surface more risk reads lighter, so the ramp's anchor flips. */
-    --grade-1: #894100;
-    --grade-2: #a65c20;
-    --grade-3: #c3773e;
-    --grade-4: #e1925a;
-    --grade-5: #ffaf76;
+    --grade-1: #34c084;
+    --grade-2: #a6cd4f;
+    --grade-3: #f0b93f;
+    --grade-4: #f58c4f;
+    --grade-5: #f2594b;
   }
 }
 :root[data-theme="dark"] {
@@ -155,11 +155,11 @@
   --map-neg: #d8452f;
   --map-mid: #454951;
   --chart-context: #5b5e66;
-  --grade-1: #894100;
-  --grade-2: #a65c20;
-  --grade-3: #c3773e;
-  --grade-4: #e1925a;
-  --grade-5: #ffaf76;
+  --grade-1: #34c084;
+  --grade-2: #a6cd4f;
+  --grade-3: #f0b93f;
+  --grade-4: #f58c4f;
+  --grade-5: #f2594b;
 }
 
 html,

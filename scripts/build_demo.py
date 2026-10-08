@@ -10,10 +10,12 @@ What goes in:
   earnings days, from the warehouse's 8-K index
 - the Movers lists for each window, the price-move panels of the top movers and a few well-known companies, and
   AI explanations for the top five gainers and losers in each window and the well-known companies over a week
+- the market map for each window, and the home page's market overview with its explained moves
+- AI research notes for the well-known companies and the week's three largest gainers and losers
 - the Copilot's answers to its example questions, with the filing pages they cite
 
-One LLM call per explanation and per answer (about 40 in all), on the free tier. Re-running reuses the API's cached
-explanations.
+One LLM call per explanation, note and answer (about 55 in all), on the free tier. Re-running reuses the API's
+cached explanations and today's notes.
 """
 
 from __future__ import annotations
@@ -38,6 +40,7 @@ OUT = ROOT / "web" / "public" / "demo"
 WINDOWS = ("1d", "1w", "1m")
 TOP_PANELS = 10  # per side and window: price-move panels
 TOP_ANALYSES = 5  # per side and window: AI explanations
+TOP_NOTES = 3  # per side, over a week: research notes
 WELL_KNOWN = ["NKE", "AAPL", "NVDA", "MSFT", "AMZN", "TSLA", "JPM", "GOOGL", "META", "LITE"]
 
 log = logging.getLogger("build_demo")
@@ -143,6 +146,7 @@ def movers(http: httpx.Client) -> tuple[set[tuple[str, str]], set[tuple[str, str
         if scan.get("status") != "ready":
             raise SystemExit(f"The movers scan isn't ready ({scan.get('status')}); open /moves/scan once and wait a minute.")
         write(f"moves/scan_{w}.json", scan)
+        write(f"moves/map_{w}.json", http.get("/moves/map", params={"window": w}).json())
         for side in ("gains", "falls"):
             top = [r["ticker"] for r in scan[side]]
             panels |= {(t, w) for t in top[:TOP_PANELS]}
@@ -165,6 +169,21 @@ def move_panels(http: httpx.Client, panels: set, analyses: set) -> None:
         else:
             log.warning("explanation %s %s: %s %s", t, w, r.status_code, r.text[:200])
     log.info("move panels: %d, explanations: %d", len(panels), len(analyses))
+
+
+def notes(http: httpx.Client, tickers: list[str]) -> None:
+    """Research notes; the API writes today's note if there isn't one and returns the cached note if there is."""
+    done = 0
+    for t in tickers:
+        r = http.post(f"/analyst/{t}", timeout=300)
+        if r.status_code == 200:
+            write(f"analyst/{t}.json", r.json())
+            done += 1
+        else:
+            log.warning("note %s: %s %s", t, r.status_code, r.text[:200])
+    log.info("research notes: %d of %d", done, len(tickers))
+    listed = http.get("/analyst", params={"limit": 50}).json()
+    write("analyst/index.json", [n for n in listed if (OUT / "analyst" / f"{n['ticker']}.json").exists()])
 
 
 def copilot(http: httpx.Client) -> None:
@@ -213,7 +232,13 @@ def main() -> None:
     well_known = [t for t in WELL_KNOWN if t in rows]
     panels |= {(t, w) for t in well_known for w in WINDOWS}
     analyses |= {(t, "1w") for t in well_known}
-    move_panels(http, panels, analyses)
+    # The home page explains the S&P 500's largest company-specific moves of the day: snapshot those too.
+    explained = {(e["ticker"], "1d") for e in http.get("/moves/overview", params={"window": "1d"}).json().get("explained", [])}
+    move_panels(http, panels | explained, analyses | explained)
+    write("moves/overview_1d.json", http.get("/moves/overview", params={"window": "1d"}).json())
+    week = json.loads((OUT / "moves" / "scan_1w.json").read_text())
+    movers_1w = [r["ticker"] for side in ("gains", "falls") for r in week[side][:TOP_NOTES]]
+    notes(http, list(dict.fromkeys(well_known + movers_1w)))
     copilot(http)
     size = sum(f.stat().st_size for f in OUT.rglob("*") if f.is_file())
     log.info("snapshot: %d files, %.1f MB -> %s", sum(1 for f in OUT.rglob("*") if f.is_file()), size / 1e6, OUT)

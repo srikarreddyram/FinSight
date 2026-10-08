@@ -32,6 +32,8 @@ SECTOR_ETF = {
     "Consumer Staples": "XLP", "Health Care": "XLV", "Financials": "XLF", "Information Technology": "XLK",
     "Communication Services": "XLC", "Utilities": "XLU", "Real Estate": "XLRE",
 }  # fmt: skip
+# The three S&P indexes whose members make up the universe, by their own levels (for the home page).
+INDEXES = {"S&P 500": "^GSPC", "S&P 400": "^SP400", "S&P 600": "^SP600"}
 WINDOWS = {"1d": 1, "1w": 5, "1m": 21}
 ESTIMATION_DAYS = 252
 MIN_ESTIMATION_DAYS = 120

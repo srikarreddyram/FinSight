@@ -9,6 +9,7 @@ GET  /documents/{doc_id}/page/{n}.png  rendered page, cited passage highlighted 
 POST /ingest                           upload a filing PDF and index it
 GET  /recs/...                         the research dashboard's data (see recs/api.py)
 GET  /moves/...                        what is moving a stock: market, sector, company, news (see news/api.py)
+GET  /analyst/{ticker}                 the AI research note (POST to write it; see analyst/api.py)
 """
 
 from __future__ import annotations
@@ -24,6 +25,7 @@ from fastapi import FastAPI, File, Form, HTTPException, Response, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
+from analyst.api import router as analyst_router
 from app.config import get_settings
 from app.pipeline import RUNS, get_pipeline
 from app.schemas import Answer, Company, DocMeta
@@ -47,6 +49,7 @@ async def lifespan(_: FastAPI):
 app = FastAPI(title="FinSight", version="0.1.0", description="Citation-first RAG over company filings", lifespan=lifespan)
 app.include_router(recs_router)
 app.include_router(moves_router)
+app.include_router(analyst_router)
 _ingest_lock = threading.Lock()
 
 

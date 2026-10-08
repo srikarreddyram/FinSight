@@ -9,6 +9,17 @@
   --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
 
   --color-paper: #ffffff;
+  --bg-grid: rgb(15 23 42 / 0.05);
+  --bg-candles: 0.13;
+  --tray: #f1f3f5;
+  --tray-inset: inset 0 1px 2px rgb(15 23 42 / 0.08), inset 0 0 0 1px rgb(15 23 42 / 0.04);
+  --tab-top: #ffffff;
+  --tab-bottom: #f3f8f6;
+  --tab-highlight: rgb(255 255 255 / 0.95);
+  --mark-candles: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 24'%3E%3Cpath d='M4 14v8M10 11v9M16 12v7M22 7v10M28 9v8M34 4v10M40 6v7M46 1v9' stroke='black' stroke-width='1'/%3E%3Crect x='2.5' y='16' width='3' height='4' rx='.6'/%3E%3Crect x='8.5' y='13' width='3' height='5' rx='.6'/%3E%3Crect x='14.5' y='14' width='3' height='3' rx='.6'/%3E%3Crect x='20.5' y='9' width='3' height='6' rx='.6'/%3E%3Crect x='26.5' y='11' width='3' height='4' rx='.6'/%3E%3Crect x='32.5' y='6' width='3' height='6' rx='.6'/%3E%3Crect x='38.5' y='7.5' width='3' height='4' rx='.6'/%3E%3Crect x='44.5' y='3' width='3' height='5' rx='.6'/%3E%3C/svg%3E");
+  --mark-spark: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 10' preserveAspectRatio='none'%3E%3Cpath d='M1 8.5L12 6L20 7.5L32 4L44 6L56 3.5L66 5L80 2.2L90 3.2L99 1.2' fill='none' stroke='black' stroke-width='2' vector-effect='non-scaling-stroke' stroke-linejoin='round' stroke-linecap='round'/%3E%3C/svg%3E");
+  --bg-line: 0.35;
+  --bg-glow: rgb(0 160 118 / 0.13);
   --color-card: #ffffff;
   --color-raised: #f7f7f8;
   --color-ink: #23262f;
@@ -42,6 +53,10 @@
      colours are looked up by a computed name (gradeColor), so four of the five were being dropped. */
   --chart-pos: #00a076;
   --chart-neg: #f0503c;
+  /* Market map tiles: deeper ends so white labels stay readable, a neutral gray at no change. */
+  --map-pos: #00875f;
+  --map-neg: #d6402b;
+  --map-mid: #6b7080;
   --chart-context: #b4b6bf;
   --grade-1: #fa9d68;
   --grade-2: #db814c;
@@ -58,6 +73,15 @@
     --shadow-pop: 0 16px 40px rgb(0 0 0 / 0.55), 0 2px 8px rgb(0 0 0 / 0.35);
     --search: #232427;
     --color-paper: #121212;
+    --bg-grid: rgb(255 255 255 / 0.045);
+    --bg-candles: 0.17;
+    --tray: #1b1d20;
+    --tray-inset: inset 0 1px 3px rgb(0 0 0 / 0.45), inset 0 0 0 1px rgb(255 255 255 / 0.04);
+    --tab-top: #2c3034;
+    --tab-bottom: #222528;
+    --tab-highlight: rgb(255 255 255 / 0.09);
+    --bg-line: 0.4;
+    --bg-glow: rgb(29 191 142 / 0.16);
     --color-card: #1b1c1e;
     --color-raised: #232427;
     --color-ink: #eeeef0;
@@ -79,6 +103,9 @@
     --color-tier-good: #a3e635;
     --chart-pos: #10a87c;
     --chart-neg: #f05a44;
+    --map-pos: #0d8e68;
+    --map-neg: #d8452f;
+    --map-mid: #454951;
     --chart-context: #5b5e66;
     /* On a dark surface more risk reads lighter, so the ramp's anchor flips. */
     --grade-1: #894100;
@@ -94,6 +121,15 @@
   --shadow-pop: 0 16px 40px rgb(0 0 0 / 0.55), 0 2px 8px rgb(0 0 0 / 0.35);
   --search: #232427;
   --color-paper: #121212;
+  --bg-grid: rgb(255 255 255 / 0.045);
+  --bg-candles: 0.17;
+  --tray: #1b1d20;
+  --tray-inset: inset 0 1px 3px rgb(0 0 0 / 0.45), inset 0 0 0 1px rgb(255 255 255 / 0.04);
+  --tab-top: #2c3034;
+  --tab-bottom: #222528;
+  --tab-highlight: rgb(255 255 255 / 0.09);
+  --bg-line: 0.4;
+  --bg-glow: rgb(29 191 142 / 0.16);
   --color-card: #1b1c1e;
   --color-raised: #232427;
   --color-ink: #eeeef0;
@@ -115,6 +151,9 @@
   --color-tier-good: #a3e635;
   --chart-pos: #10a87c;
   --chart-neg: #f05a44;
+  --map-pos: #0d8e68;
+  --map-neg: #d8452f;
+  --map-mid: #454951;
   --chart-context: #5b5e66;
   --grade-1: #894100;
   --grade-2: #a65c20;
@@ -132,6 +171,36 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   font-feature-settings: "cv11", "ss01";
+}
+
+/* Backdrop (shell/Backdrop.tsx): a faint candlestick chart behind the top of every page, fading out downwards,
+   with a soft brand glow under the nav. Cards are opaque, so it only shows between them. */
+body {
+  position: relative;
+  isolation: isolate; /* the backdrop paints above the body's background and below everything else */
+}
+body::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 520px;
+  z-index: -1;
+  pointer-events: none;
+  background: radial-gradient(55% 420px at 50% 0, var(--bg-glow), transparent 75%);
+}
+.backdrop {
+  position: absolute;
+  top: 64px;
+  left: 0;
+  right: 0;
+  height: 560px;
+  z-index: -1;
+  pointer-events: none;
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(to bottom, rgb(0 0 0 / 0.25) 0%, #000 45%, rgb(0 0 0 / 0.5) 75%, transparent 100%);
+  mask-image: linear-gradient(to bottom, rgb(0 0 0 / 0.25) 0%, #000 45%, rgb(0 0 0 / 0.5) 75%, transparent 100%);
 }
 
 ::selection {
@@ -158,6 +227,90 @@ body {
 /* ---------- App shell ---------- */
 
 /* Top navigation: text tabs with a green underline on the active one. */
+/* Page tabs: a recessed tray, tabs that lift on hover and press on click, and a raised pill (the glider) that
+   slides to the current page with a small rising price line under its label. */
+.nav-tray {
+  position: relative;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  border-radius: 13px;
+  background: var(--tray);
+  box-shadow: var(--tray-inset);
+}
+.nav-tab {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  height: 36px;
+  padding: 0 14px;
+  border-radius: 9px;
+  color: var(--color-muted);
+  font-size: 14px;
+  font-weight: 500;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: color 160ms, transform 160ms cubic-bezier(0.2, 0.8, 0.2, 1), background-color 160ms;
+}
+.nav-tab:hover {
+  color: var(--color-ink);
+  transform: translateY(-1px);
+}
+.nav-tab:not([aria-current="page"]):hover {
+  background: color-mix(in srgb, var(--tab-top) 55%, transparent);
+}
+.nav-tab:active {
+  transform: translateY(1px) scale(0.97);
+}
+.nav-tab[aria-current="page"] {
+  color: var(--color-accent);
+  font-weight: 600;
+}
+.nav-tab[aria-current="page"]::after {
+  content: "";
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  bottom: 4px;
+  height: 5px;
+  background: var(--color-accent);
+  opacity: 0.7;
+  -webkit-mask: var(--mark-spark) center / 100% 100% no-repeat;
+  mask: var(--mark-spark) center / 100% 100% no-repeat;
+  animation: spark-draw 520ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.nav-glider {
+  position: absolute;
+  top: 4px;
+  left: 0;
+  height: 36px;
+  border-radius: 9px;
+  background: linear-gradient(180deg, var(--tab-top), var(--tab-bottom));
+  border: 1px solid color-mix(in srgb, var(--color-accent) 30%, var(--color-line));
+  box-shadow:
+    inset 0 1px 0 var(--tab-highlight),
+    0 2px 0 color-mix(in srgb, var(--color-accent) 28%, var(--color-line)),
+    0 8px 18px -8px color-mix(in srgb, var(--color-accent) 55%, transparent);
+  transition: transform 420ms cubic-bezier(0.2, 0.85, 0.25, 1.05), width 420ms cubic-bezier(0.2, 0.85, 0.25, 1.05);
+}
+@keyframes spark-draw {
+  from {
+    clip-path: inset(0 100% 0 0);
+  }
+  to {
+    clip-path: inset(0 0 0 0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .nav-glider,
+  .nav-tab {
+    transition: none;
+  }
+  .nav-tab[aria-current="page"]::after {
+    animation: none;
+  }
+}
 .topnav-link {
   position: relative;
   display: inline-flex;
@@ -181,12 +334,13 @@ body {
 .topnav-link[aria-current="page"]::after {
   content: "";
   position: absolute;
-  left: 0;
-  right: 0;
-  bottom: -1px;
-  height: 3px;
-  border-radius: 3px 3px 0 0;
+  left: -2px;
+  right: -2px;
+  bottom: 3px;
+  height: 9px;
   background: var(--color-accent);
+  -webkit-mask: var(--mark-spark) center / 100% 100% no-repeat;
+  mask: var(--mark-spark) center / 100% 100% no-repeat;
 }
 /* Phones: a bottom tab bar, the way investing apps do it. */
 .tabbar-link {
@@ -208,6 +362,21 @@ body {
 .tabbar-link[aria-current="page"] {
   color: var(--color-accent);
   font-weight: 600;
+}
+.tabbar-link {
+  position: relative;
+}
+.tabbar-link[aria-current="page"]::before {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 50%;
+  width: 30px;
+  height: 7px;
+  transform: translateX(-50%);
+  background: var(--color-accent);
+  -webkit-mask: var(--mark-spark) center / 100% 100% no-repeat;
+  mask: var(--mark-spark) center / 100% 100% no-repeat;
 }
 .menu-link {
   display: flex;
@@ -279,6 +448,18 @@ select.control {
   cursor: pointer;
   text-decoration: none;
   transition: background-color 120ms, border-color 120ms, opacity 120ms;
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+}
+.btn::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0;
+  background: currentColor;
+  transition: opacity 180ms, transform 220ms;
 }
 .btn:disabled {
   opacity: 0.5;
@@ -292,6 +473,45 @@ select.control {
 }
 .btn-primary:not(:disabled):hover {
   background: color-mix(in srgb, var(--color-accent) 88%, var(--color-ink));
+}
+/* Primary: faint rising candles at the right end that tick up on hover. */
+.btn-primary::before {
+  top: 18%;
+  bottom: 14%;
+  right: 6px;
+  width: 44px;
+  opacity: 0.2;
+  -webkit-mask: var(--mark-candles) right center / contain no-repeat;
+  mask: var(--mark-candles) right center / contain no-repeat;
+}
+.btn-primary:not(:disabled):hover::before {
+  opacity: 0.32;
+  transform: translateY(-2px);
+}
+.btn-primary.btn-icon::before,
+.btn-primary.btn-sm::before {
+  display: none;
+}
+/* Secondary and ghost: a thin rising line draws along the bottom edge on hover. */
+.btn-secondary::before,
+.btn-ghost::before {
+  left: 8px;
+  right: 8px;
+  bottom: 3px;
+  height: 6px;
+  background: var(--color-accent);
+  transform: scaleX(0.4);
+  transform-origin: left;
+  -webkit-mask: var(--mark-spark) center / 100% 100% no-repeat;
+  mask: var(--mark-spark) center / 100% 100% no-repeat;
+}
+.btn-secondary:not(:disabled):hover::before,
+.btn-ghost:not(:disabled):hover::before {
+  opacity: 0.55;
+  transform: scaleX(1);
+}
+.btn-icon::before {
+  display: none;
 }
 .btn-secondary {
   background: var(--color-card);
@@ -509,8 +729,33 @@ select.control {
   color: var(--color-accent);
   font-weight: 600;
 }
+.pill,
+.chip {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+}
+.pill[aria-pressed="true"]::before,
+.chip[aria-pressed="true"]::before {
+  content: "";
+  position: absolute;
+  inset: 22% 10px 18% auto;
+  width: 34px;
+  z-index: -1;
+  pointer-events: none;
+  background: var(--color-accent);
+  opacity: 0.16;
+  -webkit-mask: var(--mark-candles) right center / contain no-repeat;
+  mask: var(--mark-candles) right center / contain no-repeat;
+}
 .pill-sm {
   height: 28px;
   padding: 0 11px;
   font-size: 12.5px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .btn::before {
+    transition: none;
+  }
 }

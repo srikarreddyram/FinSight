@@ -182,6 +182,9 @@ def risk_components(risk_preds: pd.DataFrame) -> dict[str, dict[int, float]]:
     return {"vol": {int(k): float(x) for k, x in v.items()}, "severe": {int(k): float(x) for k, x in s.items()}}
 
 
+LAST_SIGNAL_YEAR = 2024  # 2025 is the holdout, used once: it stays out of the signal tables (models/study.py)
+
+
 def signal_summary(panel: pd.DataFrame) -> list[dict]:
     overall = pd.read_csv(STUDY / "signals.csv", index_col="signal")
     # The same study inside each index (models.study writes one file per index when there is more than one).
@@ -198,6 +201,7 @@ def signal_summary(panel: pd.DataFrame) -> list[dict]:
         "spread_sector",
     )
     done = panel.dropna(subset=["excess_ret"])
+    done = done[[m.year <= LAST_SIGNAL_YEAR for m in done["month"]]]  # the same years as the study's tables
     out = []
     for name, row in overall.iterrows():
         ic = rank_ic_by_month(done, f"{name}_rank", "excess_ret")

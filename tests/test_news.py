@@ -226,3 +226,48 @@ def test_earnings_reactions_span_two_sessions_and_rank_the_latest():
     s = summary(rows)
     assert s["count"] == 2 and s["up"] == 1 and s["typical"] == pytest.approx(0.10)
     assert s["last"]["date"] == str(days[6]) and s["last_rank"] == 1.0 and s["last_biggest_since"] is None
+
+
+def test_overview_groups_the_scan_by_index(moves_client):
+    from news import api
+
+    client, _ = moves_client
+    rows = [
+        {"ticker": t, "cik": i, "name": f"{t} Co", "sector": "Information Technology", "index": idx}
+        for i, (t, idx) in enumerate([("AAA", "S&P 500"), ("BBB", "S&P 500"), ("CCC", "S&P 500"), ("DDD", "S&P 600")])
+    ]
+    (api.RECS_DIR / "watchlist.json").write_text(json.dumps(rows))
+    spark = [["2026-10-05", 7773.95], ["2026-10-06", 7825.39]]
+    scan = {
+        "as_of": "2026-10-06 00:00:00", "built": "2026-10-06T20:00:00+00:00",
+        "windows": {"1d": {"falls": [], "gains": [], "breadth": {"up": 2, "down": 2}, "market": 0.006,
+                           "all": [["AAA", 0.05, 10.0, 0.04], ["BBB", -0.03, 20.0, -0.035], ["CCC", 0.01, 30.0, None], ["DDD", -0.2, 5.0, -0.19]]}},
+        "series": {"^GSPC": {"price": 7825.39, "spark": spark, "changes": {"1d": 0.0066}}, "XLK": {"price": 300.0, "spark": spark, "changes": {"1d": 0.012}}},
+    }  # fmt: skip
+    api.CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    api._scan_path(date.today()).write_text(json.dumps(scan))
+    (api.CACHE_DIR / "analysis").mkdir()
+    api._analysis_path("BBB", date(2026, 10, 6), "1d").write_text(json.dumps({"summary": "Guidance cut [N1]."}))
+    body = client.get("/moves/overview?window=1d").json()
+    sp500, sp400, sp600 = body["indexes"]
+    assert (sp500["level"], sp500["change"], sp500["up"], sp500["down"]) == (7825.39, 0.0066, 2, 1)
+    assert [r["ticker"] for r in sp500["gainers"]] == ["AAA", "CCC"] and [r["ticker"] for r in sp500["losers"]] == ["BBB"]
+    assert sp400["level"] is None and sp400["gainers"] == [] and sp600["losers"][0]["ticker"] == "DDD"
+    assert body["sectors"] == [{"name": "Information Technology", "etf": "XLK", "change": 0.012}]
+    # The S&P 500's company-specific moves: up, then down, each once; CCC has no sector comparison.
+    assert [(e["ticker"], e["analysis"]) for e in body["explained"]] == [
+        ("AAA", None),
+        ("BBB", {"summary": "Guidance cut [N1]."}),
+    ]
+
+
+def test_index_series_for_the_home_page():
+    from news.api import _series
+
+    days = [date(2026, 8, 1) + timedelta(days=i) for i in range(30)]
+    closes = pd.DataFrame({"^GSPC": [100.0 + i for i in range(30)], "XLK": [50.0] * 29 + [None]}, index=days)
+    out = _series(closes, ["^GSPC", "XLK", "MISSING"])
+    g = out["^GSPC"]
+    assert g["price"] == 129.0 and len(g["spark"]) == 22 and g["spark"][-1] == ["2026-08-30", 129.0]
+    assert g["changes"]["1d"] == pytest.approx(129 / 128 - 1) and g["changes"]["1m"] == pytest.approx(129 / 108 - 1)
+    assert out["XLK"]["price"] == 50.0 and "MISSING" not in out  # a missing last close falls back to the one before

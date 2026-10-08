@@ -94,6 +94,23 @@ create table if not exists filing_index (
     primary key (accn, cik)
 );
 
+-- Form 4 open-market purchases (P) and sales (S) by directors and officers (warehouse.insiders). Public from
+-- filed_at + 1 day.
+create table if not exists insider_trades (
+    issuer_cik  integer not null,
+    owner_cik   bigint,
+    filed_at    date not null,
+    trans_date  date,
+    code        varchar not null,
+    shares      double,
+    price       double,
+    director    boolean,
+    officer     boolean,
+    accession   varchar not null
+);
+create index if not exists insider_lookup on insider_trades (issuer_cik, filed_at);
+create table if not exists insider_quarters (quarter varchar primary key);
+
 -- A company that reorganised under a new CIK: the successor's history continues the predecessor's.
 create table if not exists cik_links (
     successor   integer not null,

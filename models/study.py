@@ -34,13 +34,15 @@ from models.ranks import add_ranks
 from models.walkforward import rank_ic_by_month
 from signals.accounting import accounting_features
 from signals.fundamentals import fundamental_features
+from signals.insider import insider_features
+from signals.momentum import momentum_features
 from signals.text import text_features
 from signals.valuation import valuation_features
 from warehouse import db
 
 log = logging.getLogger(__name__)
 
-FAMILIES = [accounting_features, fundamental_features, valuation_features, text_features]
+FAMILIES = [accounting_features, fundamental_features, valuation_features, text_features, momentum_features, insider_features]
 NOT_SIGNALS = {"f_score_tests"}  # bookkeeping columns families return alongside their signals
 OUT_DIR = Path("data/study")
 
@@ -149,6 +151,10 @@ def main() -> None:
     ap.add_argument("--universe", choices=[*INDEXES, "financebench"], default=UNIVERSE)
     ap.add_argument("--workers", default=THREADS, type=int)
     ap.add_argument("--out", type=Path, help="output folder (default: data/study/<universe>)")
+    ap.add_argument(
+        "--last-year", default=2024, type=int,
+        help="last feature year in the IC tables: 2025 is the holdout, used once, so it stays out of signal choices",
+    )  # fmt: skip
     args = ap.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     out_dir = args.out or OUT_DIR / args.universe
@@ -163,6 +169,7 @@ def main() -> None:
         p, signals = build(con, args.start, args.end or date.today(), args.universe, args.workers)
         p.to_parquet(cache)
     labelled = p.dropna(subset=["excess_ret"])
+    labelled = labelled[pd.to_datetime(labelled["month"]).dt.year <= args.last_year]
     res = study(labelled, signals)
     res.to_csv(out_dir / "signals.csv")
     with pd.option_context("display.width", 200, "display.max_columns", 20, "display.float_format", "{:.3f}".format):

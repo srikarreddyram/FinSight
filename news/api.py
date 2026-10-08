@@ -1,5 +1,6 @@
 """Endpoints for what is moving a stock.
 
+GET  /moves/map?window=1d              every company's move, with market cap and sector, for the market map
 GET  /moves/scan?window=1w             biggest company-specific gains and falls across the universe (built in the
                                        background on first request, then cached for a few hours)
 GET  /moves/{ticker}/history?range=1y  daily closes for the price chart, with earnings days marked
@@ -94,13 +95,36 @@ def _scan_path(day: date) -> Path:
     return CACHE_DIR / f"scan_{day}.json"
 
 
+def _series(closes: pd.DataFrame, symbols: list[str]) -> dict:
+    """Index and sector-fund levels: the latest, a month of closes for a sparkline, and the change per window."""
+    out = {}
+    for sym in symbols:
+        if sym not in closes:
+            continue
+        s = closes[sym].dropna()
+        if len(s) <= max(moves.WINDOWS.values()):
+            continue
+        out[sym] = {
+            "price": round(float(s.iloc[-1]), 2),
+            "spark": [[str(d)[:10], round(float(v), 2)] for d, v in s.iloc[-22:].items()],
+            "changes": {w: float(s.iloc[-1] / s.iloc[-n - 1] - 1) for w, n in moves.WINDOWS.items()},
+        }
+    return out
+
+
 def _build_scan() -> None:
     try:
         rows = _watchlist()
         tickers = sorted(t for t in rows if "~" not in t)
-        closes = moves.yahoo_closes_chunked([moves.MARKET, *sorted(set(moves.SECTOR_ETF.values())), *tickers], period="3mo")
+        funds = [moves.MARKET, *moves.INDEXES.values(), *sorted(set(moves.SECTOR_ETF.values()))]
+        closes = moves.yahoo_closes_chunked([*funds, *tickers], period="3mo")
         sectors = {t: rows[t].get("sector") for t in tickers}
-        out = {"as_of": str(closes.index[-1]), "built": datetime.now(UTC).isoformat(), "windows": {}}
+        out = {
+            "as_of": str(closes.index[-1]),
+            "built": datetime.now(UTC).isoformat(),
+            "windows": {},
+            "series": _series(closes, funds),
+        }
         for name, days in moves.WINDOWS.items():
             df = moves.scan(closes, sectors, days)
             df["excess"] = df["vs_sector"].fillna(df["vs_market"])
@@ -112,7 +136,10 @@ def _build_scan() -> None:
                 "gains": json.loads(df.tail(50).iloc[::-1].to_json(orient="records")),
                 "breadth": {"up": int((df["change"] > 0).sum()), "down": int((df["change"] < 0).sum())},
                 "market": float(closes[moves.MARKET].iloc[-1] / closes[moves.MARKET].iloc[-days - 1] - 1),
-            }
+                # Every company, compactly, for the market map: [ticker, change, price, vs sector].
+                "all": [[r.ticker, round(r.change, 5), round(r.price, 2), None if pd.isna(r.vs_sector) else round(r.vs_sector, 5)]
+                        for r in df.itertuples()],
+            }  # fmt: skip
         CACHE_DIR.mkdir(parents=True, exist_ok=True)
         _scan_path(date.today()).write_text(json.dumps(out))
         _scan_state["error"] = None
@@ -138,6 +165,69 @@ def _run_scan_process() -> None:
         _scan_state["building"] = False
 
 
+@router.get("/map")
+def market_map(window: str = Window) -> dict:
+    """Every company's move for the market map, with what the map sizes and groups by (market cap, sector, index).
+    Built from the same daily scan as /moves/scan."""
+    status = scan(window, 1)  # starts the daily scan if needed; the lists themselves aren't used here
+    if status["status"] != "ready":
+        return status
+    data = json.loads(_scan_path(date.today()).read_text())
+    rows = _watchlist()
+    tiles = []
+    for t, change, price, vs_sector in data["windows"][window].get("all", []):
+        r = rows.get(t, {})
+        if r.get("market_cap"):
+            tiles.append({"ticker": t, "name": r.get("name"), "sector": r.get("sector") or "Other", "index": r.get("index"),
+                          "cap": r["market_cap"], "change": change, "price": price, "vs_sector": vs_sector})  # fmt: skip
+    return {"status": "ready", "as_of": data["as_of"], "window": window, "tiles": tiles}
+
+
+@router.get("/overview")
+def overview(window: str = Window) -> dict:
+    """The home page: each index's level and breadth with its largest gains and falls, the sectors, and the S&P
+    500's largest company-specific moves with their explanations where already written. From the daily scan."""
+    status = scan(window, 1)
+    if status["status"] != "ready":
+        return status
+    data = json.loads(_scan_path(date.today()).read_text())
+    w = data["windows"][window]
+    rows = _watchlist()
+    series = data.get("series", {})
+    members: dict[str, list] = {name: [] for name in moves.INDEXES}
+    for t, change, price, vs_sector in w.get("all", []):
+        name = rows.get(t, {}).get("index")
+        if name in members:
+            members[name].append((t, change, price, vs_sector))
+
+    def card(t: str, change: float, price: float, vs_sector: float | None) -> dict:
+        r = rows[t]
+        return {"ticker": t, "name": r.get("name"), "sector": r.get("sector"), "price": price, "change": change, "vs_sector": vs_sector}  # fmt: skip
+
+    indexes = []
+    for name, sym in moves.INDEXES.items():
+        ms = sorted(members[name], key=lambda m: m[1])
+        s = series.get(sym, {})
+        indexes.append({
+            "name": name, "symbol": sym, "level": s.get("price"), "change": s.get("changes", {}).get(window),
+            "spark": s.get("spark", []), "up": sum(m[1] > 0 for m in ms), "down": sum(m[1] < 0 for m in ms),
+            "gainers": [card(*m) for m in ms[::-1] if m[1] > 0][:6], "losers": [card(*m) for m in ms if m[1] < 0][:6],
+        })  # fmt: skip
+    sectors = [
+        {"name": sec, "etf": etf, "change": series[etf]["changes"][window]}
+        for sec, etf in moves.SECTOR_ETF.items()
+        if etf in series
+    ]
+    end = date.fromisoformat(data["as_of"][:10])
+    large = sorted((m for m in members["S&P 500"] if m[3] is not None), key=lambda m: m[3])
+    explained = []
+    for m in [*[m for m in large[::-1] if m[3] > 0][:2], *[m for m in large if m[3] < 0][:2]]:
+        path = _analysis_path(m[0], end, window)
+        explained.append({**card(*m), "analysis": json.loads(path.read_text()) if path.exists() else None})
+    return {"status": "ready", "as_of": data["as_of"], "window": window, "indexes": indexes,
+            "sectors": sorted(sectors, key=lambda x: -x["change"]), "explained": explained}  # fmt: skip
+
+
 @router.get("/scan")
 def scan(window: str = Window, limit: int = Query(25, ge=1, le=50)) -> dict:
     path = _scan_path(date.today())
@@ -145,7 +235,7 @@ def scan(window: str = Window, limit: int = Query(25, ge=1, le=50)) -> dict:
     if not fresh:
         with _scan_lock:
             if not _scan_state["building"]:
-                _scan_state.update(building=True, started=datetime.now(UTC).isoformat())
+                _scan_state.update(building=True, started=datetime.now(UTC).isoformat(), error=None)  # a new try
                 threading.Thread(target=_run_scan_process, daemon=True).start()
         if not path.exists():
             return {

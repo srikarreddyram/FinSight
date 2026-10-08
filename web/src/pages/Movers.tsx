@@ -3,6 +3,7 @@
 import { LoaderCircle } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { ApiError } from '../api'
+import { MarketMap } from '../components/MarketMap'
 import { Avatar, Badge, Card, PanelTitle, Segmented, Stat } from '../design/primitives'
 import { C, CH, F, NUM } from '../design/tokens'
 import { getScan } from '../news/api'
@@ -69,6 +70,7 @@ export function Movers() {
             <Stat label="Advancing" value={scan.breadth.up.toLocaleString()} note="companies up" />
             <Stat label="Declining" value={scan.breadth.down.toLocaleString()} note="companies down" />
           </StatRow>
+          <MarketMap window={window} />
           <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
             <MoverTable title="Top gainers" rows={scan.gains ?? []} window={window} />
             <MoverTable title="Top losers" rows={scan.falls ?? []} window={window} />

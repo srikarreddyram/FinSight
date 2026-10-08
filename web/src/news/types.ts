@@ -24,6 +24,24 @@ export interface EarningsReaction {
   }
 }
 
+export interface MapTile {
+  ticker: string
+  name: string | null
+  sector: string
+  index: string | null
+  cap: number
+  change: number
+  price: number
+  vs_sector: number | null
+}
+
+export interface MarketMapData {
+  status: 'ready' | 'building' | 'error'
+  as_of?: string
+  window?: MoveWindow
+  tiles?: MapTile[]
+}
+
 export interface PriceHistory {
   ticker: string
   range: PriceRange
@@ -114,4 +132,46 @@ export interface Scan {
   breadth?: { up: number; down: number }
   falls?: MoverRow[]
   gains?: MoverRow[]
+}
+
+/** A company on the home page: its move over the window. */
+export interface HomeMover {
+  ticker: string
+  name: string | null
+  sector: string | null
+  price: number
+  change: number
+  vs_sector: number | null
+}
+
+export interface IndexSummary {
+  name: string // 'S&P 500'
+  symbol: string // '^GSPC'
+  level: number | null
+  change: number | null
+  spark: [string, number][] // a month of closes
+  up: number // members up over the window
+  down: number
+  gainers: HomeMover[]
+  losers: HomeMover[]
+}
+
+export interface SectorMove {
+  name: string
+  etf: string
+  change: number
+}
+
+export interface Explained extends HomeMover {
+  analysis: Analysis | null
+}
+
+export interface Overview {
+  status: 'ready' | 'building' | 'error'
+  error?: string | null
+  as_of?: string
+  window?: MoveWindow
+  indexes?: IndexSummary[]
+  sectors?: SectorMove[]
+  explained?: Explained[]
 }

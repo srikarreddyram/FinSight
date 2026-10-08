@@ -2,6 +2,7 @@
 // mattered, the dated headlines and filings, and an on-demand cited analysis of what drove it.
 import { ArrowDownRight, ArrowUpRight, ExternalLink, FileText, LoaderCircle, Minus, Newspaper, RefreshCw, Sparkles } from 'lucide-react'
 import { Fragment, useState } from 'react'
+import { Chip, Cited } from './Cited'
 import { ApiError } from '../api'
 import { Badge, Card, PanelTitle, Segmented, SectionLabel, Skeleton } from '../design/primitives'
 import { C, CH, F, NUM } from '../design/tokens'
@@ -271,47 +272,6 @@ function WhyItMoved({ ticker, move, window, result, busy, failed, onRun, evidenc
       <div style={{ fontFamily: F.body, fontSize: 12, color: C.muted }}>AI-generated from the sources below. Check them before relying on it.</div>
       {failed && <span style={{ fontFamily: F.body, fontSize: 13, color: C.red }}>{failed}</span>}
     </div>
-  )
-}
-
-/** Text with [N1, F2] citations turned into chips that jump to the evidence row. */
-function Cited({ text, ids }: { text: string; ids: Set<string> }) {
-  const parts = text.split(/(\[[A-Z]\d+(?:\s*,\s*[A-Z]\d+)*\])/g)
-  return (
-    <>
-      {parts.map((p, i) => {
-        const m = p.match(/^\[(.*)\]$/)
-        if (!m) return <Fragment key={i}>{p}</Fragment>
-        return (
-          <Fragment key={i}>
-            {m[1]
-              .split(',')
-              .map((s) => s.trim())
-              .filter((s) => ids.has(s))
-              .map((id) => (
-                <Chip key={id} id={id} />
-              ))}
-          </Fragment>
-        )
-      })}
-    </>
-  )
-}
-
-function Chip({ id }: { id: string }) {
-  return (
-    <a
-      href={`#ev-${id}`}
-      onClick={(e) => {
-        e.preventDefault()
-        const el = document.getElementById(`ev-${id}`)
-        el?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-        el?.animate([{ background: 'var(--color-accent-soft)' }, { background: 'transparent' }], { duration: 1600 })
-      }}
-      style={{ ...NUM, display: 'inline-block', fontSize: 11, fontWeight: 600, color: C.accent, background: C.accentSoft, border: `1px solid ${C.edge}`, borderRadius: 5, padding: '0 5px', margin: '0 2px', textDecoration: 'none', verticalAlign: 'middle', lineHeight: '17px' }}
-    >
-      {id}
-    </a>
   )
 }
 

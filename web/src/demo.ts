@@ -43,6 +43,16 @@ export async function demoRequest<T>(path: string, init?: RequestInit): Promise<
     const c = await file<Record<string, never>>(`recs/company/${decodeURIComponent(m[1]).toUpperCase()}.json`)
     return { ...c, signal_history: rows(c.signal_history), return_history: rows(c.return_history), risk_history: rows(c.risk_history) } as T
   }
+  if (p === '/analyst') return file<T>('analyst/index.json')
+  if (p === '/moves/overview') return file<T>(`moves/overview_${q.get('window') ?? '1d'}.json`)
+  if ((m = p.match(/^\/analyst\/([^/]+)/))) {
+    if (init?.method === 'POST') throw new ApiError(403, 'Writing a new note is ' + LOCAL_ONLY.charAt(0).toLowerCase() + LOCAL_ONLY.slice(1))
+    return file<T>(`analyst/${decodeURIComponent(m[1]).toUpperCase()}.json`).catch((e) => {
+      if (e instanceof ApiError && e.status === 404) return null as T // no note in the snapshot: the page offers to write one
+      throw e
+    })
+  }
+  if (p === '/moves/map') return file<T>(`moves/map_${q.get('window') ?? '1w'}.json`)
   if (p === '/moves/scan') {
     const scan = await file<Record<string, unknown>>(`moves/scan_${q.get('window') ?? '1w'}.json`)
     const limit = Number(q.get('limit') ?? 25)

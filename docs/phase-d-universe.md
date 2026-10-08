@@ -73,23 +73,23 @@ The ranker's yearly ICs swing between −0.13 and +0.10 and average zero. The lo
 
 ### Single signals: some differ by size
 
-Rank IC against 12-month excess return, t-statistic on yearly means (`signals_sp500.csv`, `signals_sp400.csv`, `signals_sp600.csv`):
+Rank IC against 12-month excess return, feature months up to 2024, t-statistic on yearly means (`signals_sp500.csv`, `signals_sp400.csv`, `signals_sp600.csv`). These were recomputed without 2025, the holdout, after it was used ([`phase-f-price-insider.md`](phase-f-price-insider.md)); the figures moved by up to 0.013 and none changed sign:
 
 | Signal | S&P 500 | S&P 400 | S&P 600 |
 |---|---|---|---|
-| Leverage change | +0.046 (t 4.4) | +0.016 (t 1.0) | +0.024 (t 1.0) |
-| Leverage | +0.047 (t 2.2) | +0.032 (t 0.6) | +0.045 (t 0.9) |
-| Earnings yield | +0.015 (t 0.6) | +0.053 (t 1.6) | +0.060 (t 2.7) |
-| Book-to-market | −0.026 (t −0.4) | −0.007 (t 0.0) | +0.090 (t 2.1) |
-| Sales-to-price | +0.010 (t 0.4) | +0.026 (t 0.6) | +0.087 (t 1.6) |
-| Gross margin | +0.026 (t 0.9) | −0.042 (t −1.0) | −0.123 (t −5.4) |
-| Risk Factors length | +0.006 (t 0.4) | −0.047 (t −1.9) | −0.074 (t −3.4) |
-| MD&A similarity | +0.007 (t 0.5) | +0.006 (t 0.3) | +0.047 (t 1.9) |
+| Leverage change | +0.045 (t 4.1) | +0.017 (t 1.0) | +0.033 (t 1.5) |
+| Leverage | +0.049 (t 2.3) | +0.044 (t 1.1) | +0.057 (t 1.1) |
+| Earnings yield | +0.008 (t 0.2) | +0.053 (t 1.5) | +0.069 (t 3.3) |
+| Book-to-market | −0.039 (t −0.8) | −0.020 (t −0.4) | +0.088 (t 1.7) |
+| Sales-to-price | +0.001 (t 0.0) | +0.028 (t 0.6) | +0.091 (t 1.4) |
+| Gross margin | +0.032 (t 1.3) | −0.035 (t −0.7) | −0.113 (t −4.9) |
+| Risk Factors length | +0.006 (t 0.4) | −0.048 (t −1.8) | −0.077 (t −3.0) |
+| MD&A similarity | +0.004 (t 0.2) | +0.008 (t 0.4) | +0.051 (t 1.8) |
 
 - Leverage change, the one signal that held up in large caps, does not carry over to mid and small caps.
 - Cheapness (earnings yield, book-to-market, sales-to-price) works in small caps and not in large ones, which is the textbook pattern. So does the "Lazy Prices" direction for 10-K text: longer Risk Factors and less-similar MD&A go with worse returns in the S&P 600.
-- Small caps with high gross margins did badly (t = −5.4). The S&P 600 sample is 2020–2025, when profitable-looking growth companies fell hard after 2021; this is more likely that one episode than a lasting effect.
-- With 174 comparisons, several of these clear t = 2 by chance alone, and the S&P 600 rests on six years. Patterns worth testing on new data, not findings.
+- Small caps with high gross margins did badly (t = −4.9). The S&P 600 sample is 2020–2024, when profitable-looking growth companies fell hard after 2021; this is more likely that one episode than a lasting effect.
+- With 174 comparisons, several of these clear t = 2 by chance alone, and the S&P 600 rests on five years. Patterns worth testing on new data, not findings.
 
 ### Risk Engine on 1,500 companies
 

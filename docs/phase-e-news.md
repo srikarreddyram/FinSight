@@ -48,6 +48,17 @@ against the sector; a row opens the company page on the same window. The scan ru
 yfinance can't download in two threads at once and a scan inside the API process would make company pages wait,
 and it is cached for three hours.
 
+## Market map (`/moves/map`)
+
+The same scan, drawn whole: every current member as a tile sized by market cap and grouped by sector (a squarified
+treemap, `web/src/charts/treemap.ts`), coloured by its change over the window. The colour runs from a neutral grey
+through to full green or red at ±3% for a day, ±7.5% for a week and ±15% for a month, so a notable day and a
+notable month look equally strong. The map shows one index at a time (the S&P 500 by default) or all ~1,400
+priced members. Hovering a tile gives its change, its change against the sector, price and market cap; clicking
+opens the company on the same window. Sectors are FinSight's SIC-based ones
+([`phase-b-signals.md`](phase-b-signals.md)), so Visa and Mastercard sit under Industrials and UnitedHealth under
+Financials, where GICS would place them elsewhere.
+
 ## Corporate actions
 
 Yahoo adjusts its history for splits and dividends but not always for spin-offs. Corteva's spin-off of Vylor on

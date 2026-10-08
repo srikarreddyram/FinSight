@@ -4,6 +4,7 @@ import { ChartCard } from '../charts/core'
 import { MovePanel } from '../components/MovePanel'
 import { EarningsCard } from '../components/EarningsCard'
 import { PriceChart } from '../components/PriceChart'
+import { ResearchNote } from '../components/ResearchNote'
 import { getHistory } from '../news/api'
 import type { MoveWindow } from '../news/types'
 import { LineChart } from '../charts/LineChart'
@@ -42,10 +43,11 @@ function Drivers({ title, drivers, good }: { title: string; drivers: Driver[]; g
 
 const TABS: { value: Tab; label: string }[] = [
   { value: 'overview', label: 'Overview' },
+  { value: 'note', label: 'Research note' },
   { value: 'move', label: 'Price move & news' },
   { value: 'signals', label: 'Signals' },
 ]
-type Tab = 'overview' | 'move' | 'signals'
+type Tab = 'overview' | 'note' | 'move' | 'signals'
 
 /** Last close and the day's change, from the price history (the same feed as the chart). */
 function Quote({ ticker }: { ticker: string }) {
@@ -69,14 +71,14 @@ function Quote({ ticker }: { ticker: string }) {
   )
 }
 
-export function Company({ ticker, hasFilings, initialWindow = '1w', opened = false }: { ticker: string; hasFilings: boolean; initialWindow?: MoveWindow; opened?: boolean }) {
+export function Company({ ticker, hasFilings, initialWindow = '1w', opened = false, initialTab }: { ticker: string; hasFilings: boolean; initialWindow?: MoveWindow; opened?: boolean; initialTab?: Tab }) {
   const { data, error } = useData(() => getCompany(ticker), ticker)
   const card = data?.card
   const months = (data?.signal_history ?? []).map((r) => String(r.month).slice(0, 7))
   const name = card?.name && card.name !== card.ticker ? card.name : ticker
   const askHref = `${import.meta.env.BASE_URL}?q=${encodeURIComponent(`What are the main risk factors for ${card?.name ?? ticker}?`)}`
-  // A mover link (…?w=1d) opens straight on the price move; otherwise the overview.
-  const [tab, setTab] = useState<Tab>(opened ? 'move' : 'overview')
+  // A mover link (…?w=1d) opens straight on the price move, a note link (…?tab=note) on the note; otherwise the overview.
+  const [tab, setTab] = useState<Tab>(initialTab ?? (opened ? 'move' : 'overview'))
   return (
     <Page
       title={name}
@@ -111,6 +113,7 @@ export function Company({ ticker, hasFilings, initialWindow = '1w', opened = fal
       {data && card && (
         <>
           {tab === 'move' && <MovePanel ticker={ticker} initial={initialWindow} />}
+          {tab === 'note' && <ResearchNote key={ticker} ticker={ticker} name={name} />}
           {tab === 'overview' && (
           <>
           <PriceChart ticker={ticker} />

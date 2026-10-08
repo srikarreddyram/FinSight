@@ -1,7 +1,7 @@
 // Navigation: a top bar with text tabs and a wide search on desktop; on phones, a slim top bar and a bottom
 // tab bar with a "More" sheet for the rest.
 import { Library, Menu, Monitor, Moon, Search, Sun, X } from 'lucide-react'
-import { useState } from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
 import { DEMO } from '../demo'
 import { C, F } from '../design/tokens'
 
@@ -44,6 +44,31 @@ function Brand() {
   )
 }
 
+/** The page tabs: a recessed tray with a raised pill that glides to the current page. */
+function NavTabs({ active }: { active: string | undefined }) {
+  const tray = useRef<HTMLElement | null>(null)
+  const [glider, setGlider] = useState<{ left: number; width: number } | null>(null)
+  useLayoutEffect(() => {
+    const place = () => {
+      const el = tray.current?.querySelector<HTMLElement>('[aria-current="page"]')
+      setGlider(el ? { left: el.offsetLeft, width: el.offsetWidth } : null)
+    }
+    place()
+    window.addEventListener('resize', place)
+    return () => window.removeEventListener('resize', place)
+  }, [active])
+  return (
+    <nav ref={tray} aria-label="Main" className="nav-tray hidden lg:flex">
+      {glider && <span aria-hidden className="nav-glider" style={{ transform: `translateX(${glider.left}px)`, width: glider.width }} />}
+      {NAV.map((n) => (
+        <a key={n.path} href={n.path ? `#${n.path}` : import.meta.env.BASE_URL} className="nav-tab" aria-current={active === n.path ? 'page' : undefined} title={n.description}>
+          {n.label}
+        </a>
+      ))}
+    </nav>
+  )
+}
+
 export function TopNav({ route, apiDown, theme, onTheme, onSearch, onLibrary }: Props) {
   const current = sectionOf(route)
   return (
@@ -59,13 +84,7 @@ export function TopNav({ route, apiDown, theme, onTheme, onSearch, onLibrary }: 
       )}
       <div style={{ maxWidth: 1440, margin: '0 auto', height: 64, display: 'flex', alignItems: 'center', gap: 28, padding: '0 clamp(16px, 2.4vw, 28px)' }}>
         <Brand />
-        <nav aria-label="Main" className="hidden lg:flex" style={{ alignItems: 'center', gap: 24, height: '100%' }}>
-          {NAV.map((n) => (
-            <a key={n.path} href={n.path ? `#${n.path}` : import.meta.env.BASE_URL} className="topnav-link" aria-current={current?.path === n.path ? 'page' : undefined} title={n.description}>
-              {n.label}
-            </a>
-          ))}
-        </nav>
+        <NavTabs active={current?.path} />
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
           <button
             type="button"

@@ -1,35 +1,37 @@
 # FinSight
 
 **Filings-driven equity research.** A citation-first copilot that answers questions from SEC filings, and a
-point-in-time research platform over about 1,500 US companies: a fundamentals warehouse, 29 signals, a
-walk-forward return ranker with a backtest, a risk engine with a 1–5 grade, and a web app that ties them
-together.
+point-in-time research platform over about 1,500 US companies: a fundamentals warehouse, 34 signals, a
+walk-forward return ranker with a backtest, a risk engine with a 1–5 grade, cited AI research notes, and a web
+app that ties them together.
 
-**[Live demo →](https://srikarreddyram.github.io/FinSight/)** (a snapshot: the watchlist, every company page, Movers,
-explanations of the top moves and the Copilot's example answers; run it locally for live prices and any question).
+**[Live demo →](https://srikarreddyram.github.io/FinSight/)** (a snapshot: the watchlist, every company page, Movers
+with the market map, explanations of the top moves, research notes on well-known companies and the Copilot's
+example answers; run it locally for live prices, any company's note and any question).
 
 Everything runs on free tools: the Gemini API free tier (or local Ollama), open-source models for search and
 reranking, DuckDB, and public data from SEC EDGAR and Yahoo Finance.
 
-![The Copilot answering a question, with the cited filing page beside it](docs/images/copilot.png)
+![The home page: the three S&P indexes, today's top movers and the sectors](docs/images/home.png)
 
 | | |
 |---|---|
-| ![Watchlist](docs/images/watchlist.png) | ![Company page](docs/images/company.png) |
-| ![Movers](docs/images/movers.png) | ![Backtest](docs/images/backtest.png) |
+| ![The Copilot answering a question, with the cited filing page beside it](docs/images/copilot.png) | ![Watchlist](docs/images/watchlist.png) |
+| ![Company page](docs/images/company.png) | ![Research note](docs/images/research-note.png) |
+| ![Movers](docs/images/movers.png) | ![Market map](docs/images/market-map.png) |
 
 ## Status at a glance
 
 | Module | State | Headline result |
 |---|---|---|
 | 1. Research Copilot | Built, evaluated | FinanceBench: 81% recall@10, 96% citation precision, 64% answer accuracy on graded questions, 15/15 correct refusals |
-| 2. Analyst Agent | Not started | Planned: a cited thesis per company |
+| 2. Analyst Agent | First version built | A research note on any company in about 25 seconds: bull case, bear case and what to watch from the latest 10-K, financials, news and FinSight's data; every figure filled in by Python or found in the source it cites |
 | 3. Fundamentals warehouse | Built | 45M XBRL facts, 22.7k 10-Ks split into Items, 6.7M daily prices, 758k filing-index rows, all point-in-time |
-| 4. Signal Lab | Built | 29 signals; leverage change is the one robust large-cap signal (rank IC 0.046, t = 4.4) |
-| 5. Prediction engine | Built, honest null | Walk-forward LightGBM ranker: mean rank IC 0.000 on test years 2015–2024 and −0.085 on the 2025 holdout; no edge in large, mid or small caps |
+| 4. Signal Lab | Built | 34 signals; leverage change is the one robust large-cap signal (rank IC 0.045, t = 4.1); price momentum and insider buying add nothing significant |
+| 5. Prediction engine | Built, honest null | Walk-forward LightGBM ranker: mean rank IC +0.005 (t 0.2) on test years 2015–2024, and −0.085 on the 2025 holdout; no edge in large, mid or small caps |
 | 6. Recommendation layer and web app | Built | Ranked watchlist with SHAP drivers and risk grades; a six-screen web app |
 | 7. Risk engine | Built | Severe-loss rate rises from 7% (grade 1) to 47% (grade 5), and from 6% to 51% on the 2025 holdout; matches trailing volatility within a month |
-| 8. What's moving a stock | Built | Live moves split into market, sector and company-specific parts; cited drivers from news and 8-Ks in about 3 seconds; Movers screen across the universe |
+| 8. What's moving a stock | Built | Live moves split into market, sector and company-specific parts; cited drivers from news and 8-Ks in about 3 seconds; Movers screen and market map across the universe |
 
 The models' results are reported as measured, including the ones that didn't work. Phase docs in [`docs/`](docs)
 give every number with its baseline.
@@ -39,6 +41,7 @@ give every number with its baseline.
 - [The Copilot](#the-copilot)
 - [The research platform](#the-research-platform)
 - [What's moving a stock](#whats-moving-a-stock)
+- [Research notes](#research-notes)
 - [The web app](#the-web-app)
 - [Getting started](#getting-started)
 - [Tech stack](#tech-stack)
@@ -151,27 +154,32 @@ DuckDB with append-only, point-in-time tables:
 
 ### Signals (Module 4)
 
-29 signals in four families: accounting quality (Piotroski F-score, Altman Z, Beneish M, accruals),
+34 signals in six families: accounting quality (Piotroski F-score, Altman Z, Beneish M, accruals),
 fundamentals (growth, margins, returns, leverage, and their changes), valuation (earnings yield, book-to-market,
-free-cash-flow yield, sales-to-price), and filing text (similarity to last year's Risk Factors and MD&A, Risk
-Factors length, MD&A readability).
+free-cash-flow yield, sales-to-price), filing text (similarity to last year's Risk Factors and MD&A, Risk
+Factors length, MD&A readability), price (12-1 momentum, the past month's return, nearness to the 52-week high)
+and insider activity (open-market buying and selling by directors and officers, from Form 4).
 
-Monthly rank IC against the next 12 months' return over the S&P 500 (t-statistic on yearly means):
+Monthly rank IC against the next 12 months' excess return, feature months 2011–2024 (t-statistic on yearly means):
 
 | Signal | S&P 500 | S&P 400 | S&P 600 |
 |---|---|---|---|
-| Leverage change | **+0.046 (t 4.4)** | +0.016 (t 1.0) | +0.024 (t 1.0) |
-| Earnings yield | +0.015 (t 0.6) | +0.053 (t 1.6) | **+0.060 (t 2.7)** |
-| Book-to-market | −0.026 (t −0.4) | −0.007 (t 0.0) | **+0.090 (t 2.1)** |
-| Gross margin | +0.026 (t 0.9) | −0.042 (t −1.0) | −0.123 (t −5.4) |
+| Leverage change | **+0.045 (t 4.1)** | +0.017 (t 1.0) | +0.033 (t 1.5) |
+| Earnings yield | +0.008 (t 0.2) | +0.053 (t 1.5) | **+0.069 (t 3.3)** |
+| Book-to-market | −0.039 (t −0.8) | −0.020 (t −0.4) | +0.088 (t 1.7) |
+| Gross margin | +0.032 (t 1.3) | −0.035 (t −0.7) | −0.113 (t −4.9) |
+| 12-1 momentum | −0.006 (t −0.2) | −0.008 (t −0.2) | +0.001 (t 0.0) |
+| Insider buyers, 6 months | +0.005 (t 0.3) | +0.019 (t 1.0) | +0.018 (t 0.5) |
 
 Cheapness works among small caps and not large ones, the textbook pattern; leverage change works only among large
-caps. The S&P 600 covers just 2020–2025, and with 174 signal-by-index comparisons several will clear t = 2 by
-chance, so these are patterns to test on new data rather than findings.
+caps. Momentum, the best-documented pattern outside the filings, is flat here, as it has been in US stocks since
+2009, and insider buying is too weak to tell from noise ([`docs/phase-f-price-insider.md`](docs/phase-f-price-insider.md)).
+The S&P 600 covers just 2020–2024, and with 204 signal-by-index comparisons several will clear t = 2 by chance, so
+these are patterns to test on new data rather than findings.
 
 ### Prediction engine (Module 5)
 
-- **Panel:** 194,357 stock-months; audited so that no row uses information dated after its month (0 of 193,301).
+- **Panel:** 194,357 stock-months; audited so that no row uses information dated after its month (0 of 194,051).
 - **Validation:** expanding-window walk-forward, one test year per fold (2015–2024), training rows purged where
   their 12-month label overlaps the test year, and all tuning nested inside each fold's training window. 2025 is
   held out for one final run.
@@ -181,14 +189,15 @@ chance, so these are patterns to test on new data rather than findings.
 
 | | All three indexes | Inside S&P 500 | Inside S&P 400 | Inside S&P 600 |
 |---|---|---|---|---|
-| Ranker mean rank IC | 0.000 | +0.016 | −0.005 | −0.012 |
-| Long-short return after costs | +2.3% a year (Sharpe 0.27) | +0.2% | +5.0% | +5.4% |
+| Ranker mean rank IC | +0.005 (t 0.2) | +0.018 | +0.011 | −0.002 |
+| Long-short return after costs | +4.5% a year (Sharpe 0.42) | +1.7% | +7.0% | +8.8% |
 
-**There is no edge**, and the 2025 holdout, scored once at the end, confirms it (ranker IC −0.085;
-[`docs/holdout-2025.md`](docs/holdout-2025.md)). The whole backtest gain comes from 2020 (+59%); the other nine years compound to a loss.
-Removing exposure to size, volatility, momentum and beta changes nothing (`models/checks.py`). An early run that
-showed IC 0.058 inside the S&P 400 did not survive the full data. The details are in
-[`docs/phase-d-universe.md`](docs/phase-d-universe.md).
+**There is no edge.** The 2025 holdout, scored once at the end, before the price and insider signals were added,
+confirms it (ranker IC −0.085; [`docs/holdout-2025.md`](docs/holdout-2025.md)). The whole backtest gain comes from
+2020 (+59%); the other nine years compound to −0.3% a year. Removing exposure to size, volatility, momentum and beta
+leaves the IC at +0.012 (t 0.6; `models/checks.py`). An early run that showed IC 0.058 inside the S&P 400 did not
+survive the full data. The details are in [`docs/phase-d-universe.md`](docs/phase-d-universe.md) and
+[`docs/phase-f-price-insider.md`](docs/phase-f-price-insider.md).
 
 ### Risk engine (Module 7)
 
@@ -236,15 +245,34 @@ company-specific moves are picked out. Dated headlines (Google News) and the com
 gathered around them, and one free-tier Gemini call names the likely drivers; Python keeps only drivers that cite
 evidence that was actually given. Nike, week to 5 October 2026: −6.7%, of which −7.4% company-specific, driven by
 a weak revenue forecast and job cuts announced with its earnings. The Movers screen runs the same comparison across
-all ~1,500 companies. Spin-offs that the price feed doesn't adjust for are flagged rather than reported as losses.
+all ~1,500 companies. Spin-offs that the price feed doesn't adjust for are flagged rather than reported as losses. The market map shows
+every company as a tile sized by market cap and coloured by its move, grouped by sector.
 Details in [`docs/phase-e-news.md`](docs/phase-e-news.md).
+
+## Research notes
+
+On any company page, **Write the note** produces a research note in about 25 seconds: a headline, a summary, key
+numbers, a bull case, a bear case and what to watch. It is written from the latest 10-K (Item 1A risk headings and
+the MD&A passages that best answer four analyst questions), three years of XBRL financials, the past month's news
+and 8-Ks, and FinSight's own data (risk grade, the month's move split into market, sector and company parts,
+earnings reactions).
+
+The model never types a figure from the financials or FinSight's data: it writes a placeholder and Python fills in
+the value and cites it. A figure quoted from a 10-K passage or headline must appear, with the same unit, in the
+item the sentence cites, or the sentence is removed; so is any point without a citation. Nike, October 2026: revenue
+flat at $46.40B, net income down to $3.11B, Greater China down 11%, a 12-month return of −47.6% and a run of sell
+ratings, each linked to its fact, 10-K passage or headline. Details in
+[`docs/phase-g-analyst.md`](docs/phase-g-analyst.md).
 
 ## The web app
 
 React and TypeScript, served by the same FastAPI backend.
 
-- **Copilot.** Ask a question; the answer sits beside the cited filing page, with the rows used highlighted,
-  verified figures marked and every citation clickable.
+- **Home.** The S&P 500, 400 and 600 with the day's change, a month's sparkline and how many members rose or
+  fell; the top gainers and losers in each index; the sectors; why the S&P 500's biggest movers moved, with cited AI
+  explanations; the latest research notes; and this month's risk grade changes.
+- **Copilot.** At the top of the home page. Ask a question; the answer sits beside the cited filing page, with the
+  rows used highlighted, verified figures marked and every citation clickable.
 - **Watchlist.** All ~1,500 companies ranked, with risk grade, expected range, volatility, market cap and the
   top driver. Filter by sector, index, size and grade, sort any column, page through, and export the filtered
   rows to CSV.
@@ -252,7 +280,10 @@ React and TypeScript, served by the same FastAPI backend.
   each earnings report over five years (two-session move against the market, typical size, worst reaction); key
   figures, return and risk drivers, rank and grade history, and each signal's percentile over time.
 - **Signal Lab, Backtest and Risk** screens with charts that each have a table view.
-- **Movers and price moves.** The day's, week's or month's biggest moves against each company's sector; on any
+- **Research notes.** On each company page: key numbers, bull and bear cards, what to watch, and the sources
+  grouped by kind, each 10-K passage expandable to its full text.
+- **Movers and price moves.** A market map of the whole universe, and the day's, week's or month's biggest moves
+  against each company's sector; on any
   company page, the move split into market, sector and company-specific parts, the key days, the dated headlines
   and 8-K filings, and an Investigate button that returns the likely drivers, each cited.
 - **Search (⌘K or Ctrl+K)** for any company or page; light, dark or system theme; a bottom tab bar on phones;
@@ -355,9 +386,10 @@ data/       manifests only; filings, the warehouse and model outputs are generat
 
 ## Testing and CI
 
-187 Python tests cover parsing on real filing tables, fiscal-year logic, numeric verification, point-in-time
+216 Python tests cover parsing on real filing tables, fiscal-year logic, numeric verification, point-in-time
 and leakage guarantees (every one checked by breaking it on purpose), index membership reconstruction, signals
-with hand-computed values, walk-forward purging, the backtest arithmetic, risk grades and the recommendation API.
+with hand-computed values, walk-forward purging, the backtest arithmetic, risk grades, the recommendation API,
+the move breakdown and its cited drivers, and the research notes' figure and citation checks.
 GitHub Actions runs ruff and the unit tests on every push (the integration tests need downloaded filings).
 
 ```bash
@@ -370,12 +402,12 @@ cd web && npm run lint && npm run build
 Open items on the [project board](https://github.com/srikarreddyram/FinSight/issues):
 
 - Copilot accuracy: over-refusals and ratio formula choices
-- Analyst Agent: a cited thesis for each company
+- Analyst Agent, second half: open-ended questions answered by a planner that sends sub-questions through the
+  Copilot; notes that also read 10-Qs and earnings calls
 - Price history for delisted and acquired companies, to close the survivorship gap
 - Sector-specific risk measures for banks, real estate and energy
 - Loughran-McDonald tone signals
 - Cross-checking displayed figures against XBRL
-- A hosted demo
 
 ## Documentation
 
@@ -391,6 +423,8 @@ Open items on the [project board](https://github.com/srikarreddyram/FinSight/iss
 | [`docs/phase-d-universe.md`](docs/phase-d-universe.md) | The S&P 400 and 600 extension and robustness checks |
 | [`docs/phase-e-news.md`](docs/phase-e-news.md) | What is moving a stock: move breakdown, news and filings, cited drivers |
 | [`docs/holdout-2025.md`](docs/holdout-2025.md) | The 2025 holdout, run once: ranker and risk engine on a year they never saw |
+| [`docs/phase-f-price-insider.md`](docs/phase-f-price-insider.md) | Price momentum and insider-buying signals, and the ranker with them |
+| [`docs/phase-g-analyst.md`](docs/phase-g-analyst.md) | Research notes: sources, figure checks, API and app |
 
 ---
 

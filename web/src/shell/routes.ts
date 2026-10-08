@@ -1,6 +1,7 @@
-// Hash routes keep the app a static single page: '#/watchlist', '#/company/AAPL'. No hash is the Copilot.
+// Hash routes keep the app a static single page: '#/watchlist', '#/company/AAPL'. No hash is the home page,
+// which holds the Copilot.
 import { useEffect, useState } from 'react'
-import { Activity, ChartLine, FlaskConical, ListOrdered, type LucideIcon, MessageSquareText, ShieldAlert } from 'lucide-react'
+import { Activity, ChartLine, FlaskConical, House, ListOrdered, type LucideIcon, ShieldAlert } from 'lucide-react'
 
 export interface NavItem {
   path: string
@@ -13,7 +14,7 @@ export const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
   {
     label: 'Research',
     items: [
-      { path: '', label: 'Copilot', icon: MessageSquareText, description: 'Ask questions about company filings' },
+      { path: '', label: 'Home', icon: House, description: 'Markets today and the filings Copilot' },
       { path: '/watchlist', label: 'Watchlist', icon: ListOrdered, description: 'Ranked companies with risk grades' },
       { path: '/movers', label: 'Movers', icon: Activity, description: 'Biggest moves today, this week and this month, and why' },
     ],
@@ -46,7 +47,7 @@ export function useRoute(): string {
 
 export function go(path: string) {
   if (path === '') {
-    // The Copilot lives at the bare URL; keep any ?q= the person is on.
+    // Home, with the Copilot, lives at the bare URL; keep any ?q= the person is on.
     window.location.hash = ''
     window.history.replaceState(null, '', window.location.pathname + window.location.search)
     window.dispatchEvent(new HashChangeEvent('hashchange'))

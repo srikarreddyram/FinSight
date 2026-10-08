@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { ApiError, ask, listDocuments } from './api'
 import { AnswerCard } from './components/AnswerCard'
 import { AskBar } from './components/AskBar'
+import { Backdrop } from './shell/Backdrop'
 import { Intro } from './components/Intro'
 import { LibraryDrawer } from './components/LibraryDrawer'
 import { SourceViewer } from './components/SourceViewer'
@@ -10,6 +11,7 @@ import { C, F } from './design/tokens'
 import { Backtest } from './pages/Backtest'
 import { Company } from './pages/Company'
 import { Movers } from './pages/Movers'
+import { HomeDashboard } from './pages/Home'
 import { Risk } from './pages/Risk'
 import { SignalLab } from './pages/SignalLab'
 import { Watchlist } from './pages/Watchlist'
@@ -75,12 +77,14 @@ export default function App() {
   const [companyPath, companyQuery] = route.startsWith('/company/') ? route.slice('/company/'.length).split('?') : ['', '']
   const companyTicker = companyPath ? decodeURIComponent(companyPath) : null
   const companyWindow = new URLSearchParams(companyQuery ?? '').get('w')
+  const companyTab = new URLSearchParams(companyQuery ?? '').get('tab')
 
   return (
     <div style={{ minHeight: '100vh', color: C.text }}>
       <a href="#main" className="sr-only focus:not-sr-only" style={{ position: 'absolute', zIndex: 80, padding: 8, background: C.surface }}>
         Skip to content
       </a>
+      <Backdrop />
       <TopNav route={route} apiDown={apiDown} theme={theme} onTheme={setTheme} onSearch={() => setSearchOpen(true)} onLibrary={() => setLibraryOpen(true)} />
       {/* Room for the phone tab bar under the content. */}
       <div className="pb-[76px] lg:pb-0">
@@ -90,7 +94,7 @@ export default function App() {
           ) : route === '/movers' ? (
             <Movers />
           ) : companyTicker ? (
-            <Company ticker={companyTicker} hasFilings={indexedTickers.has(companyTicker)} initialWindow={companyWindow === '1d' || companyWindow === '1m' ? companyWindow : '1w'} opened={!!companyWindow} key={companyTicker} />
+            <Company ticker={companyTicker} hasFilings={indexedTickers.has(companyTicker)} initialWindow={companyWindow === '1d' || companyWindow === '1m' ? companyWindow : '1w'} opened={!!companyWindow} initialTab={companyTab === 'note' ? 'note' : undefined} key={companyTicker} />
           ) : route === '/signals' ? (
             <SignalLab />
           ) : route === '/backtest' ? (
@@ -176,7 +180,10 @@ function Workspace({ apiDown, filings, companies, pending, onPendingUsed }: { ap
       )}
 
       {!started ? (
-        <Intro busy={busy} history={history} filings={filings} companies={companies} onAsk={(q) => onAsk(q)} />
+        <>
+          <Intro busy={busy} history={history} filings={filings} companies={companies} onAsk={(q) => onAsk(q)} />
+          <HomeDashboard />
+        </>
       ) : (
         <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
           <section style={{ minWidth: 0, display: 'grid', gap: 14, alignContent: 'start' }}>

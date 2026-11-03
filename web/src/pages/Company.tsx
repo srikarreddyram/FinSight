@@ -1,10 +1,13 @@
-import { ArrowDownRight, ArrowUpRight, MessageSquareText, TrendingDown, TrendingUp } from 'lucide-react'
+import { ArrowDownRight, ArrowUpRight, GitCompareArrows, MessageSquareText, TrendingDown, TrendingUp } from 'lucide-react'
 import { useState } from 'react'
 import { ChartCard } from '../charts/core'
 import { MovePanel } from '../components/MovePanel'
 import { EarningsCard } from '../components/EarningsCard'
 import { PriceChart } from '../components/PriceChart'
 import { ResearchNote } from '../components/ResearchNote'
+import { RiskChanges } from '../components/RiskChanges'
+import { Timeline } from '../components/Timeline'
+import { Financials } from '../components/Financials'
 import { getHistory } from '../news/api'
 import type { MoveWindow } from '../news/types'
 import { LineChart } from '../charts/LineChart'
@@ -45,9 +48,12 @@ const TABS: { value: Tab; label: string }[] = [
   { value: 'overview', label: 'Overview' },
   { value: 'note', label: 'Research note' },
   { value: 'move', label: 'Price move & news' },
+  { value: 'timeline', label: 'Timeline' },
+  { value: 'changes', label: '10-K changes' },
+  { value: 'financials', label: 'Financials' },
   { value: 'signals', label: 'Signals' },
 ]
-type Tab = 'overview' | 'note' | 'move' | 'signals'
+type Tab = 'overview' | 'note' | 'move' | 'timeline' | 'changes' | 'financials' | 'signals'
 
 /** Last close and the day's change, from the price history (the same feed as the chart). */
 function Quote({ ticker }: { ticker: string }) {
@@ -96,6 +102,9 @@ export function Company({ ticker, hasFilings, initialWindow = '1w', opened = fal
               </div>
             </div>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <a href={`#/compare/${encodeURIComponent(ticker)}/${ticker === 'AAPL' ? 'MSFT' : 'AAPL'}`} className="btn btn-secondary">
+                <GitCompareArrows size={15} /> Compare
+              </a>
               {hasFilings && card && (
                 <a href={askHref} className="btn btn-secondary">
                   <MessageSquareText size={15} /> Ask the Copilot
@@ -114,6 +123,9 @@ export function Company({ ticker, hasFilings, initialWindow = '1w', opened = fal
         <>
           {tab === 'move' && <MovePanel ticker={ticker} initial={initialWindow} />}
           {tab === 'note' && <ResearchNote key={ticker} ticker={ticker} name={name} />}
+          {tab === 'timeline' && <Timeline ticker={ticker} />}
+          {tab === 'changes' && <RiskChanges ticker={ticker} />}
+          {tab === 'financials' && <Financials ticker={ticker} />}
           {tab === 'overview' && (
           <>
           <PriceChart ticker={ticker} />

@@ -1,6 +1,7 @@
 """Insider trades from SEC's Form 3/4/5 data sets into `insider_trades`.
 
     uv run python -m warehouse.insiders                # every quarter from 2009, universe companies only
+    uv run python -m warehouse.insiders --rebuild      # reload every quarter from the cached zips
 
 SEC publishes every Form 3, 4 and 5 as quarterly tab-separated files. Kept: Form 4 (and 4/A) open-market
 purchases (code P) and sales (code S) of non-derivative securities by an issuer's directors and officers, with
@@ -42,7 +43,9 @@ def parse_quarter(blob: bytes, ciks: set[int]) -> pd.DataFrame:
     sub = sub[sub["DOCUMENT_TYPE"].isin(FORMS)]
     sub["issuer_cik"] = pd.to_numeric(sub["ISSUERCIK"], errors="coerce")
     sub = sub[sub["issuer_cik"].isin(ciks)]
-    own = _read(z, "REPORTINGOWNER.tsv", ["ACCESSION_NUMBER", "RPTOWNERCIK", "RPTOWNER_RELATIONSHIP"])
+    own = _read(
+        z, "REPORTINGOWNER.tsv", ["ACCESSION_NUMBER", "RPTOWNERCIK", "RPTOWNERNAME", "RPTOWNER_RELATIONSHIP", "RPTOWNER_TITLE"]
+    )
     rel = own["RPTOWNER_RELATIONSHIP"].fillna("")
     own["director"] = rel.str.contains("Director", case=False)
     own["officer"] = rel.str.contains("Officer", case=False)
@@ -65,6 +68,8 @@ def parse_quarter(blob: bytes, ciks: set[int]) -> pd.DataFrame:
                 "director",
                 "officer",
                 "accession",
+                "owner_name",
+                "owner_title",
             ]
         )
     when = lambda s: pd.to_datetime(s, format="%d-%b-%Y", errors="coerce").dt.date  # noqa: E731  "31-JAN-2024"
@@ -79,6 +84,8 @@ def parse_quarter(blob: bytes, ciks: set[int]) -> pd.DataFrame:
         "director": df["director"],
         "officer": df["officer"],
         "accession": df["ACCESSION_NUMBER"],
+        "owner_name": df["RPTOWNERNAME"],
+        "owner_title": df["RPTOWNER_TITLE"],
     })  # fmt: skip
     return out.dropna(subset=["owner_cik", "filed_at"]).reset_index(drop=True)
 
@@ -93,13 +100,16 @@ def quarters(index_html: str) -> list[tuple[str, str]]:
     return sorted(out.items())
 
 
-def load(con: duckdb.DuckDBPyConnection) -> None:
+def load(con: duckdb.DuckDBPyConnection, rebuild: bool = False) -> None:
     from ingest.fetch_edgar import Edgar
 
     edgar = Edgar(get_settings().sec_user_agent)
     cache = get_settings().data_dir / "cache" / "form345"
     cache.mkdir(parents=True, exist_ok=True)
     ciks = {r[0] for r in con.execute("select cik from universe union select predecessor from cik_links").fetchall()}
+    if rebuild:  # reload every quarter from the cached zips (after a column is added)
+        con.execute("delete from insider_trades")
+        con.execute("delete from insider_quarters")
     done = {r[0] for r in con.execute("select quarter from insider_quarters").fetchall()}
     this_quarter = f"{date.today().year}q{(date.today().month - 1) // 3 + 1}"
     for name, url in quarters(edgar.get(INDEX).text):
@@ -124,7 +134,7 @@ def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     logging.getLogger("httpx").setLevel(logging.WARNING)
     con = db.connect()
-    load(con)
+    load(con, rebuild="--rebuild" in __import__("sys").argv)
     log.info(
         "insider_trades: %s",
         con.execute("select code, count(*), count(distinct issuer_cik) from insider_trades group by 1").fetchall(),

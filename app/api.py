@@ -10,6 +10,7 @@ POST /ingest                           upload a filing PDF and index it
 GET  /recs/...                         the research dashboard's data (see recs/api.py)
 GET  /moves/...                        what is moving a stock: market, sector, company, news (see news/api.py)
 GET  /analyst/{ticker}                 the AI research note (POST to write it; see analyst/api.py)
+GET  /research/...                     10-K changes, event timeline, sourced financials, time machine (research/api.py)
 """
 
 from __future__ import annotations
@@ -31,6 +32,7 @@ from app.pipeline import RUNS, get_pipeline
 from app.schemas import Answer, Company, DocMeta
 from news.api import router as moves_router
 from recs.api import router as recs_router
+from research.api import router as research_router
 
 log = logging.getLogger(__name__)
 
@@ -50,6 +52,7 @@ app = FastAPI(title="FinSight", version="0.1.0", description="Citation-first RAG
 app.include_router(recs_router)
 app.include_router(moves_router)
 app.include_router(analyst_router)
+app.include_router(research_router)
 _ingest_lock = threading.Lock()
 
 

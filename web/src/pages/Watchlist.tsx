@@ -1,4 +1,4 @@
-import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, Download, Search, X } from 'lucide-react'
+import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, Download, GitCompareArrows, History, Search, X } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Avatar, Badge, Card, Segmented } from '../design/primitives'
 import { C, F, GRADE_LABELS, NUM, gradeColor } from '../design/tokens'
@@ -131,9 +131,17 @@ export function Watchlist() {
       }
       aside={
         rows && (
-          <button type="button" className="btn btn-secondary" onClick={() => download(`finsight-watchlist-${meta?.as_of?.slice(0, 7) ?? 'latest'}.csv`, csv(shown))}>
-            <Download size={15} /> Export {filtered ? `${shown.length.toLocaleString()} rows` : 'CSV'}
-          </button>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <a href="#/history/2019-12" className="btn btn-secondary">
+              <History size={15} /> Time machine
+            </a>
+            <a href={`#/compare/${shown[0]?.ticker ?? 'NKE'}/${shown[1]?.ticker ?? 'AAPL'}`} className="btn btn-secondary">
+              <GitCompareArrows size={15} /> Compare
+            </a>
+            <button type="button" className="btn btn-secondary" onClick={() => download(`finsight-watchlist-${meta?.as_of?.slice(0, 7) ?? 'latest'}.csv`, csv(shown))}>
+              <Download size={15} /> Export {filtered ? `${shown.length.toLocaleString()} rows` : 'CSV'}
+            </button>
+          </div>
         )
       }
       error={error}

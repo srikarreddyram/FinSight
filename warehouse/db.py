@@ -109,6 +109,8 @@ create table if not exists insider_trades (
     accession   varchar not null
 );
 create index if not exists insider_lookup on insider_trades (issuer_cik, filed_at);
+alter table insider_trades add column if not exists owner_name varchar;
+alter table insider_trades add column if not exists owner_title varchar;  -- e.g. Chief Financial Officer
 create table if not exists insider_quarters (quarter varchar primary key);
 
 -- A company that reorganised under a new CIK: the successor's history continues the predecessor's.

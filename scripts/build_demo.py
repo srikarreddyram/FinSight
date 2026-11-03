@@ -11,7 +11,8 @@ What goes in:
 - the Movers lists for each window, the price-move panels of the top movers and a few well-known companies, and
   AI explanations for the top five gainers and losers in each window and the well-known companies over a week
 - the market map for each window, and the home page's market overview with its explained moves
-- AI research notes for the well-known companies and the week's three largest gainers and losers
+- AI research notes for the well-known companies and the week's three largest gainers and losers, with their
+  10-K changes, event timelines and sourced financials, and three time-machine months
 - the Copilot's answers to its example questions, with the filing pages they cite
 
 One LLM call per explanation, note and answer (about 55 in all), on the free tier. Re-running reuses the API's
@@ -41,6 +42,7 @@ WINDOWS = ("1d", "1w", "1m")
 TOP_PANELS = 10  # per side and window: price-move panels
 TOP_ANALYSES = 5  # per side and window: AI explanations
 TOP_NOTES = 3  # per side, over a week: research notes
+TIME_MACHINE = ["2019-12", "2021-12", "2023-06"]  # the months the time machine offers as shortcuts
 WELL_KNOWN = ["NKE", "AAPL", "NVDA", "MSFT", "AMZN", "TSLA", "JPM", "GOOGL", "META", "LITE"]
 
 log = logging.getLogger("build_demo")
@@ -186,6 +188,19 @@ def notes(http: httpx.Client, tickers: list[str]) -> None:
     write("analyst/index.json", [n for n in listed if (OUT / "analyst" / f"{n['ticker']}.json").exists()])
 
 
+def research(http: httpx.Client, tickers: list[str], months: list[str]) -> None:
+    """The research tabs (10-K changes, timeline, financials) for some companies, and some time-machine months."""
+    for t in tickers:
+        for kind in ("changes", "timeline", "financials"):
+            r = http.get(f"/research/{t}/{kind}")
+            if r.status_code == 200:
+                write(f"research/{t}/{kind}.json", r.json())
+    write("research/months.json", http.get("/research/asof/months").json())
+    for m in months:
+        write(f"research/asof_{m}.json", http.get("/research/asof", params={"month": m}).json())
+    log.info("research tabs: %d companies, time machine: %d months", len(tickers), len(months))
+
+
 def copilot(http: httpx.Client) -> None:
     write("documents.json", http.get("/documents").json())
     # One quoted string per line inside the EXAMPLES array, in either quote style.
@@ -239,6 +254,7 @@ def main() -> None:
     week = json.loads((OUT / "moves" / "scan_1w.json").read_text())
     movers_1w = [r["ticker"] for side in ("gains", "falls") for r in week[side][:TOP_NOTES]]
     notes(http, list(dict.fromkeys(well_known + movers_1w)))
+    research(http, list(dict.fromkeys(well_known + movers_1w)), TIME_MACHINE)
     copilot(http)
     size = sum(f.stat().st_size for f in OUT.rglob("*") if f.is_file())
     log.info("snapshot: %d files, %.1f MB -> %s", sum(1 for f in OUT.rglob("*") if f.is_file()), size / 1e6, OUT)

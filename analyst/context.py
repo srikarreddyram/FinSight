@@ -80,13 +80,18 @@ def facts(con: duckdb.DuckDBPyConnection, cik: int, as_of: date) -> list[Item]:
     vals = {item: snap.annual(item, 3) for item, _ in FACT_ITEMS}
     out: list[Item] = []
 
-    def add(title: str, value: str, **meta) -> None:
-        out.append(Item(f"X{len(out) + 1}", "fact", title, value, meta=meta))
+    def add(title: str, value: str, url: str | None = None, **meta) -> None:
+        out.append(Item(f"X{len(out) + 1}", "fact", title, value, url=url, meta=meta))
 
     for item, label in FACT_ITEMS:
         for v in vals[item]:
             if v is not None:
-                add(f"{label}, {fy(v.period_end)}", money(v.value), item=item, fy_end=str(v.period_end))
+                url = (
+                    f"https://www.sec.gov/Archives/edgar/data/{v.cik or cik}/{v.accn.replace('-', '')}/{v.accn}-index.htm"
+                    if v.accn
+                    else None
+                )
+                add(f"{label}, {fy(v.period_end)}", money(v.value), url=url, item=item, fy_end=str(v.period_end), form=v.form)
     rev, op, ni, cfo, capex = (vals[k] for k in ("revenue", "operating_income", "net_income", "cfo", "capex"))
     if len(rev) > 1 and rev[0] and rev[1] and rev[1].value:
         add(f"Revenue growth, {fy(rev[0].period_end)}", pct(rev[0].value / rev[1].value - 1), derived=True)

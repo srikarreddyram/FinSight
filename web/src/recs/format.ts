@@ -28,9 +28,9 @@ export function money(v: number | null | undefined): string {
 
 export function cap(v: number | null | undefined): string {
   if (v == null || Number.isNaN(v)) return DASH
-  if (v >= 1e12) return `$${(v / 1e12).toFixed(2)}T`
-  if (v >= 1e9) return `$${(v / 1e9).toFixed(1)}B`
-  return `$${(v / 1e6).toFixed(0)}M`
+  const a = Math.abs(v)
+  const s = a >= 1e12 ? `$${(a / 1e12).toFixed(2)}T` : a >= 1e9 ? `$${(a / 1e9).toFixed(1)}B` : `$${(a / 1e6).toFixed(0)}M`
+  return v < 0 ? `−${s}` : s
 }
 
 export function monthLabel(iso: string): string {

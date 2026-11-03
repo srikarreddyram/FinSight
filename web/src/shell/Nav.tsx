@@ -60,7 +60,7 @@ function NavTabs({ active }: { active: string | undefined }) {
   return (
     <nav ref={tray} aria-label="Main" className="nav-tray hidden lg:flex">
       {glider && <span aria-hidden className="nav-glider" style={{ transform: `translateX(${glider.left}px)`, width: glider.width }} />}
-      {NAV.map((n) => (
+      {NAV.filter((n) => n.topnav !== false).map((n) => (
         <a key={n.path} href={n.path ? `#${n.path}` : import.meta.env.BASE_URL} className="nav-tab" aria-current={active === n.path ? 'page' : undefined} title={n.description}>
           {n.label}
         </a>

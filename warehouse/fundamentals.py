@@ -108,6 +108,10 @@ class Value:
     period_end: date
     value: float
     available_at: date
+    # Where the figure was reported: the filing's accession, form and filer CIK (None for derived values).
+    accn: str | None = None
+    form: str | None = None
+    cik: int | None = None
 
 
 def lineage(con: duckdb.DuckDBPyConnection, cik: int) -> list[int]:
@@ -169,7 +173,7 @@ class Snapshot:
                         continue
                 elif r["period_start"] is not None:
                     continue
-                return Value(fy_end, r["value"], r["available_at"])
+                return Value(fy_end, r["value"], r["available_at"], r.get("accn"), r.get("form"), r.get("cik"))
         return None
 
     def annual(self, item: str, n: int = 2) -> list[Value | None]:

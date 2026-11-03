@@ -52,12 +52,13 @@ def test_insider_quarter_parsing_keeps_directors_and_officers_buying_and_selling
     with zipfile.ZipFile(buf, "w") as z:
         z.writestr("SUBMISSION.tsv", tsv(["ACCESSION_NUMBER", "FILING_DATE", "DOCUMENT_TYPE", "ISSUERCIK"],
                                          [["a1", "31-JAN-2024", "4", "0000320187"], ["a2", "01-FEB-2024", "4", "0000999999"], ["a3", "02-FEB-2024", "3", "0000320187"]]))  # fmt: skip
-        z.writestr("REPORTINGOWNER.tsv", tsv(["ACCESSION_NUMBER", "RPTOWNERCIK", "RPTOWNER_RELATIONSHIP"],
-                                             [["a1", "0001", "Director"], ["a2", "0002", "Officer"], ["a3", "0003", "Director"]]))  # fmt: skip
+        z.writestr("REPORTINGOWNER.tsv", tsv(["ACCESSION_NUMBER", "RPTOWNERCIK", "RPTOWNERNAME", "RPTOWNER_RELATIONSHIP", "RPTOWNER_TITLE"],
+                                             [["a1", "0001", "Doe Jane", "Director", ""], ["a2", "0002", "Roe Rick", "Officer", "CFO"], ["a3", "0003", "Poe Pat", "Director", ""]]))  # fmt: skip
         z.writestr("NONDERIV_TRANS.tsv", tsv(["ACCESSION_NUMBER", "TRANS_DATE", "TRANS_CODE", "TRANS_SHARES", "TRANS_PRICEPERSHARE"],
                                              [["a1", "29-JAN-2024", "P", "100", "50.5"], ["a1", "29-JAN-2024", "M", "10", "1"], ["a2", "30-JAN-2024", "S", "5", "9"]]))  # fmt: skip
     df = parse_quarter(buf.getvalue(), {320187})
     assert len(df) == 1 and df.loc[0, "code"] == "P" and df.loc[0, "issuer_cik"] == 320187 and df.loc[0, "director"]
+    assert df.loc[0, "owner_name"] == "Doe Jane"
     assert (
         df.loc[0, "filed_at"] == date(2024, 1, 31) and df.loc[0, "price"] == 50.5
     )  # option exercise (M) and other issuers dropped

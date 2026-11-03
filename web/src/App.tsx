@@ -12,6 +12,8 @@ import { Backtest } from './pages/Backtest'
 import { Company } from './pages/Company'
 import { Movers } from './pages/Movers'
 import { HomeDashboard } from './pages/Home'
+import { Compare } from './pages/Compare'
+import { TimeMachine } from './pages/TimeMachine'
 import { Risk } from './pages/Risk'
 import { SignalLab } from './pages/SignalLab'
 import { Watchlist } from './pages/Watchlist'
@@ -93,8 +95,12 @@ export default function App() {
             <Watchlist />
           ) : route === '/movers' ? (
             <Movers />
+          ) : route.startsWith('/compare') ? (
+            <Compare a={decodeURIComponent(route.split('/')[2] || 'NKE').toUpperCase()} b={decodeURIComponent(route.split('/')[3] || 'AAPL').toUpperCase()} />
+          ) : route.startsWith('/history') ? (
+            <TimeMachine month={/^\d{4}-\d{2}$/.test(route.split('/')[2] ?? '') ? route.split('/')[2] : '2019-12'} />
           ) : companyTicker ? (
-            <Company ticker={companyTicker} hasFilings={indexedTickers.has(companyTicker)} initialWindow={companyWindow === '1d' || companyWindow === '1m' ? companyWindow : '1w'} opened={!!companyWindow} initialTab={companyTab === 'note' ? 'note' : undefined} key={companyTicker} />
+            <Company ticker={companyTicker} hasFilings={indexedTickers.has(companyTicker)} initialWindow={companyWindow === '1d' || companyWindow === '1m' ? companyWindow : '1w'} opened={!!companyWindow} initialTab={(['note', 'timeline', 'changes', 'financials'] as const).find((t) => t === companyTab)} key={companyTicker} />
           ) : route === '/signals' ? (
             <SignalLab />
           ) : route === '/backtest' ? (

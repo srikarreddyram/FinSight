@@ -291,14 +291,14 @@ function SourceRow({ item }: { item: NoteItem }) {
             {item.meta.source}
           </span>
         )}
-        {item.kind === 'news' && <ExternalLink size={12} />}
+        {(item.kind === 'news' || (item.kind === 'fact' && item.url)) && <ExternalLink size={12} />}
         {passage && <ChevronDown size={14} style={{ transform: open ? 'rotate(180deg)' : undefined, transition: 'transform 150ms' }} />}
       </span>
     </>
   )
   return (
     <li id={`${PREFIX}-${item.id}`} style={{ borderRadius: 8 }}>
-      {item.kind === 'news' && item.url ? (
+      {(item.kind === 'news' || item.kind === 'fact') && item.url ? (
         <a href={item.url} target="_blank" rel="noreferrer" className="hover-lift" style={row}>
           {body}
         </a>

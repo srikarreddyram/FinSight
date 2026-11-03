@@ -42,6 +42,7 @@ give every number with its baseline.
 - [The research platform](#the-research-platform)
 - [What's moving a stock](#whats-moving-a-stock)
 - [Research notes](#research-notes)
+- [Research tools](#research-tools)
 - [The web app](#the-web-app)
 - [Getting started](#getting-started)
 - [Tech stack](#tech-stack)
@@ -264,6 +265,23 @@ flat at $46.40B, net income down to $3.11B, Greater China down 11%, a 12-month r
 ratings, each linked to its fact, 10-K passage or headline. Details in
 [`docs/phase-g-analyst.md`](docs/phase-g-analyst.md).
 
+## Research tools
+
+What FinSight can show that a trading app can't, from its filings and point-in-time history:
+
+- **10-K changes.** This year's Risk Factors against last year's, paragraph by paragraph: new risks, dropped
+  ones, and reworded ones with the words added and removed marked. Nike's 2026 10-K: 7 new, 37 reworded,
+  14 dropped.
+- **Timeline.** Three years of filings, 8-K events, earnings with the price reaction, and insider purchases
+  and sales by name and title, each linked to EDGAR.
+- **Sourced financials.** Every figure links to the filing that reported it.
+- **Compare.** Two companies side by side: prices, risk, fundamentals, insiders, notes.
+- **Time machine.** The watchlist as it stood in any month from 2015 to 2024, from models trained only on earlier
+  data, next to what happened over the following year.
+
+The app is for research, not trading: no buy buttons, price targets or picks. Details in
+[`docs/phase-h-research-tools.md`](docs/phase-h-research-tools.md).
+
 ## The web app
 
 React and TypeScript, served by the same FastAPI backend.
@@ -386,7 +404,7 @@ data/       manifests only; filings, the warehouse and model outputs are generat
 
 ## Testing and CI
 
-216 Python tests cover parsing on real filing tables, fiscal-year logic, numeric verification, point-in-time
+220 Python tests cover parsing on real filing tables, fiscal-year logic, numeric verification, point-in-time
 and leakage guarantees (every one checked by breaking it on purpose), index membership reconstruction, signals
 with hand-computed values, walk-forward purging, the backtest arithmetic, risk grades, the recommendation API,
 the move breakdown and its cited drivers, and the research notes' figure and citation checks.
@@ -425,6 +443,7 @@ Open items on the [project board](https://github.com/srikarreddyram/FinSight/iss
 | [`docs/holdout-2025.md`](docs/holdout-2025.md) | The 2025 holdout, run once: ranker and risk engine on a year they never saw |
 | [`docs/phase-f-price-insider.md`](docs/phase-f-price-insider.md) | Price momentum and insider-buying signals, and the ranker with them |
 | [`docs/phase-g-analyst.md`](docs/phase-g-analyst.md) | Research notes: sources, figure checks, API and app |
+| [`docs/phase-h-research-tools.md`](docs/phase-h-research-tools.md) | 10-K changes, event timeline, sourced financials, Compare, time machine |
 
 ---
 

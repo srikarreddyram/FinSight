@@ -1,13 +1,14 @@
 // Hash routes keep the app a static single page: '#/watchlist', '#/company/AAPL'. No hash is the home page,
 // which holds the Copilot.
 import { useEffect, useState } from 'react'
-import { Activity, ChartLine, FlaskConical, House, ListOrdered, type LucideIcon, ShieldAlert } from 'lucide-react'
+import { Activity, ChartLine, FlaskConical, GitCompareArrows, History, House, ListOrdered, type LucideIcon, ShieldAlert } from 'lucide-react'
 
 export interface NavItem {
   path: string
   label: string
   icon: LucideIcon
   description: string
+  topnav?: boolean // false: in search and the phone's More menu, but not the desktop tab strip
 }
 
 export const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
@@ -17,6 +18,8 @@ export const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
       { path: '', label: 'Home', icon: House, description: 'Markets today and the filings Copilot' },
       { path: '/watchlist', label: 'Watchlist', icon: ListOrdered, description: 'Ranked companies with risk grades' },
       { path: '/movers', label: 'Movers', icon: Activity, description: 'Biggest moves today, this week and this month, and why' },
+      { path: '/compare', label: 'Compare', icon: GitCompareArrows, description: 'Two companies side by side', topnav: false },
+      { path: '/history', label: 'Time machine', icon: History, description: 'The watchlist as it stood in a past month, and what happened next', topnav: false },
     ],
   },
   {
@@ -58,6 +61,6 @@ export function go(path: string) {
 
 /** The nav item a route belongs to: a company page sits under the Watchlist. */
 export function sectionOf(route: string): NavItem | undefined {
-  const path = route.startsWith('/company/') ? '/watchlist' : route
+  const path = route.startsWith('/company/') ? '/watchlist' : route.startsWith('/compare') ? '/compare' : route.startsWith('/history') ? '/history' : route
   return NAV.find((n) => n.path === path) ?? (route === '' ? NAV[0] : undefined)
 }

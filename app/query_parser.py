@@ -64,20 +64,25 @@ _FORWARD = re.compile(r"\b(expect(s|ed|ing)?|guidance|outlook|forecasts?|anticip
 
 
 class CompanyMatcher:
-    def __init__(self, companies: Iterable[Company]):
-        self.patterns: list[tuple[re.Pattern, str]] = []
+    """strict: companies whose names must be written with a capital, because there are too many of them to vet
+    one by one (the whole universe): 'Target' the company, not a target margin."""
+
+    def __init__(self, companies: Iterable[Company], strict: Iterable[str] = ()):
+        strict = set(strict)
+        self.patterns: list[tuple[re.Pattern, str, bool]] = []
         for c in companies:
             names = {c.name, *c.aliases}
             for n in sorted(names, key=len, reverse=True):
                 if len(n) >= 3 or not n.isalpha():
-                    self.patterns.append((re.compile(rf"(?<![\w&]){re.escape(n)}(?![\w&])", re.I), c.ticker))
+                    pat = re.compile(rf"(?<![\w&]){re.escape(n)}(?![\w&])", re.I)
+                    self.patterns.append((pat, c.ticker, c.ticker in strict))
             # Tickers must be written in capitals so 'FL' or 'KO' don't fire on ordinary words.
-            self.patterns.append((re.compile(rf"(?<![\w$]){re.escape(c.ticker)}(?![\w])"), c.ticker))
+            self.patterns.append((re.compile(rf"(?<![\w$]){re.escape(c.ticker)}(?![\w])"), c.ticker, False))
 
     def find(self, text: str) -> list[str]:
         hits: list[tuple[int, str]] = []
-        for pat, ticker in self.patterns:
-            m = pat.search(text)
+        for pat, ticker, strict in self.patterns:
+            m = next((m for m in pat.finditer(text) if not (strict and m.group(0)[0].islower())), None)
             if m:
                 hits.append((m.start(), ticker))
         out: list[str] = []
@@ -118,13 +123,25 @@ class QueryParser:
         "sub_queries: for questions about several companies, one self-contained question per company."
     )
 
-    def __init__(self, companies: dict[str, Company], available_years: dict[str, list[int]], llm=None):
+    def __init__(self, companies: dict[str, Company], available_years: dict[str, list[int]], llm=None, strict=()):
         self.companies = companies
         self.available = available_years
-        self.matcher = CompanyMatcher(companies.values())
+        self.matcher = CompanyMatcher(companies.values(), strict)
         self.llm = llm
 
-    def _schema(self) -> dict:
+    def _candidates(self, question: str) -> dict[str, Company]:
+        """The companies the LLM may pick from: all of a small corpus, but with the whole universe indexed only
+        those sharing a word with the question, so the prompt stays small."""
+        if len(self.companies) <= 100:
+            return self.companies
+        words = set(re.findall(r"[a-z0-9&]{4,}", question.lower()))
+        return {
+            t: c
+            for t, c in self.companies.items()
+            if words & set(re.findall(r"[a-z0-9&]{4,}", " ".join([c.name, *c.aliases]).lower()))
+        }
+
+    def _schema(self, tickers: Iterable[str]) -> dict:
         return {
             "type": "object",
             "properties": {
@@ -133,7 +150,7 @@ class QueryParser:
                     "items": {
                         "type": "object",
                         "properties": {
-                            "ticker": {"type": "string", "enum": sorted(self.companies)},
+                            "ticker": {"type": "string", "enum": sorted(tickers)},
                             "words": {"type": "string"},
                         },
                         "required": ["ticker", "words"],
@@ -227,9 +244,16 @@ class QueryParser:
         # 68.7%), so the LLM only runs when the question names no company outright.
         if self.llm is None or pq.tickers:
             return pq
+        candidates = self._candidates(question)
+        if not candidates:
+            return pq
         try:
             out = self.llm.json(
-                system=self.SYSTEM, user=self._prompt(question), schema=self._schema(), role="fast", max_tokens=1500
+                system=self.SYSTEM,
+                user=self._prompt(question, candidates),
+                schema=self._schema(candidates),
+                role="fast",
+                max_tokens=1500,
             )
         except Exception as e:  # noqa: BLE001 - the heuristic parse is a complete fallback
             log.warning("LLM query parse failed, using heuristics: %s", e)
@@ -263,9 +287,9 @@ class QueryParser:
             llm_pq.sub_queries = {t: subs.get(t) or self._single_company_query(question, t, merged) for t in merged}
         return llm_pq
 
-    def _prompt(self, question: str) -> str:
+    def _prompt(self, question: str, companies: dict[str, Company]) -> str:
         lines = []
-        for t, c in sorted(self.companies.items()):
+        for t, c in sorted(companies.items()):
             years = self.available.get(t, [])
             span = f"FY{min(years)}-FY{max(years)}" if years else "none indexed"
             aka = f" (aka {', '.join(c.aliases)})" if c.aliases else ""

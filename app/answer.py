@@ -115,9 +115,15 @@ def to_citation(i: int, h: Hit) -> Citation:
     c = h.chunk
     body = c.text.split("\n", 1)[-1]
     facts = c.chunk_type == "facts"  # a table of XBRL figures rather than a page: the whole table is the snippet
+    if facts:
+        label = f"{c.company} {c.fiscal_label} XBRL"
+    elif c.page == 0:  # 10-K text from the warehouse has items, not pages
+        label = f"{c.company} {c.fiscal_label} 10-K {c.heading.split('.')[0]}"
+    else:
+        label = f"{c.company} {c.fiscal_label} p.{c.page}"
     return Citation(
         id=source_id(i),
-        label=f"{c.company} {c.fiscal_label} XBRL" if facts else f"{c.company} {c.fiscal_label} p.{c.page}",
+        label=label,
         doc_id=c.doc_id,
         company=c.company,
         fiscal_label=c.fiscal_label,
@@ -125,7 +131,7 @@ def to_citation(i: int, h: Hit) -> Citation:
         page_end=c.page_end,
         section=c.section,
         chunk_type=c.chunk_type,
-        snippet=c.text if facts else body[:600],
+        snippet=c.text if facts else body if c.page == 0 else body[:600],  # no page image to fall back on
         score=h.rerank_score,
     )
 

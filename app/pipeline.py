@@ -79,6 +79,7 @@ def available_years() -> dict[str, list[int]]:
 
 class Pipeline:
     def __init__(self, config: PipelineConfig | None = None, settings: Settings | None = None, llm: LLM | None = None):
+        from ingest import sections
         from ingest.manifest import load_companies
 
         self.cfg = config or RUNS["F"]
@@ -86,9 +87,20 @@ class Pipeline:
         self.llm = llm or get_llm()
         self.retriever = Retriever(self.s)
         self.reranker = Reranker(blend=self.s.rerank_blend, table_slots=self.s.table_slots)
-        self.companies: dict[str, Company] = load_companies()
+        filed = load_companies()
+        years = available_years()
+        self.pdf_tickers = set(years)
+        # The warehouse's 10-K sections cover every other company, but only on the Qdrant server.
+        self.sections = sections.indexed() if self.s.qdrant_url else {}
+        self.companies: dict[str, Company] = {**sections.companies(), **filed} if self.sections else filed
+        years = {**{t: [f["fiscal_year"]] for t, f in self.sections.items()}, **years}
         self.tenk_docs = tenk_docs()
-        self.parser = QueryParser(self.companies, available_years(), llm=self.llm if self.cfg.llm_query_parser else None)
+        self.parser = QueryParser(
+            self.companies,
+            years,
+            llm=self.llm if self.cfg.llm_query_parser else None,
+            strict=set(self.companies) - set(filed),
+        )
         self.collection = naive_collection(self.s) if self.cfg.naive_index else self.s.collection
         # The embedded Qdrant store isn't safe for concurrent use; LLM calls stay outside this lock.
         self._retrieve_lock = threading.Lock()
@@ -105,8 +117,15 @@ class Pipeline:
 
     # ---------------------------------------------------------------- retrieval
 
+    def _collection(self, ticker: str | None) -> str:
+        """FinanceBench and EDGAR filings are in the main collection; every other company's 10-K sections in theirs."""
+        if not self.cfg.naive_index and ticker and ticker not in self.pdf_tickers and ticker in self.sections:
+            return self.s.sections_collection
+        return self.collection
+
     def _search(self, query: str, pq: ParsedQuery | None, ticker: str | None = None, k: int | None = None) -> list[Hit]:
-        kw = dict(collection=self.collection, hybrid=self.cfg.hybrid, k=k)
+        one = ticker or (pq.tickers[0] if pq is not None and len(pq.tickers) == 1 else None)
+        kw = dict(collection=self._collection(one), hybrid=self.cfg.hybrid, k=k)
         sections = list(pq.sections) if pq is not None else []
         if self.cfg.expand_concepts:
             query, from_statements = expand(query)

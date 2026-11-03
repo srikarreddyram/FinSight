@@ -356,6 +356,17 @@ uv run python -m ingest.fetch_edgar AAPL MSFT NVDA --years 3     # more filings 
 uv run python -m eval.run --runs F --sets financebench unanswerable xbrl && uv run python -m eval.report
 ```
 
+Every company in the universe, not only the indexed filings, once the warehouse is built (see Research platform
+below). The latest 10-K's sections for ~1,600 companies are too many points for the embedded store, so this uses
+Qdrant in Docker:
+
+```bash
+docker compose up -d qdrant
+uv run python -m ingest.move_index              # copy the FinanceBench index to the server, nothing re-embedded
+export FINSIGHT_QDRANT_URL=http://localhost:6333  # or set it in .env
+uv run python -m ingest.sections                # Items 1, 1A, 3, 7, 7A and 9A of each latest 10-K, about an hour
+```
+
 ### Research platform
 
 Several hours on first run, mostly the 10-K text download; every loader resumes where it stopped.

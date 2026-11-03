@@ -24,6 +24,8 @@ class Settings(BaseSettings):
     qdrant_url: str | None = None
     qdrant_path: Path = ROOT / "data" / "qdrant"
     collection: str = "finsight"
+    # Every other company's latest 10-K sections (ingest/sections.py); only searched with the Qdrant server.
+    sections_collection: str = "finsight_sections"
 
     # Local models (all run through fastembed / ONNX, no torch needed at query time)
     dense_model: str = "BAAI/bge-base-en-v1.5"

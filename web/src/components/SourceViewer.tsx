@@ -76,6 +76,49 @@ function FactsTable({ citation }: { citation: Citation }) {
   )
 }
 
+// 10-K text from the warehouse has items, not pages: doc_id is "edgar:{cik}:{accession}".
+function FilingPassage({ citation }: { citation: Citation }) {
+  const [, cik, accn] = citation.doc_id.split(':')
+  const url = `https://www.sec.gov/Archives/edgar/data/${cik}/${accn.replace(/-/g, '')}/${accn}-index.htm`
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '6px 12px', padding: '12px 16px', borderBottom: `1px solid ${C.rule}` }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <SectionLabel>Source</SectionLabel>
+          <div style={{ fontFamily: F.display, fontWeight: 600, fontSize: 16, lineHeight: 1.3, marginTop: 4, color: C.text }} className="truncate">
+            {citation.company} · {citation.fiscal_label} 10-K
+          </div>
+          <div className="truncate" style={{ fontFamily: F.body, fontSize: 12, color: C.muted, marginTop: 2 }}>
+            {citation.section}
+          </div>
+        </div>
+        <a href={url} target="_blank" rel="noreferrer" className="btn btn-secondary btn-sm">
+          Open on EDGAR <ExternalLink size={13} />
+        </a>
+      </div>
+      <div style={{ flex: 1, overflow: 'auto', background: C.bg, padding: 12 }}>
+        <div
+          style={{
+            whiteSpace: 'pre-wrap',
+            fontFamily: F.body,
+            fontSize: 13.5,
+            lineHeight: 1.6,
+            color: C.text,
+            background: C.surface,
+            border: `1px solid ${C.rule}`,
+            borderRadius: 6,
+            padding: 16,
+            maxWidth: 768,
+            margin: '0 auto',
+          }}
+        >
+          {citation.snippet}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function SourceViewer({ citation }: Props) {
   // The parent remounts this component (key) per citation, so page starts at the cited page.
   const [page, setPage] = useState(citation?.page ?? 1)
@@ -83,6 +126,7 @@ export function SourceViewer({ citation }: Props) {
   const [failed, setFailed] = useState<string | null>(null)
 
   if (citation?.chunk_type === 'facts') return <FactsTable citation={citation} />
+  if (citation?.doc_id.startsWith('edgar:')) return <FilingPassage citation={citation} />
   if (!citation) {
     return (
       <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>

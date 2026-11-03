@@ -23,7 +23,7 @@
   "results": {
     "G/financebench": {
       "n": 50,
-      "accuracy": 0.978,
+      "accuracy": 0.979,
       "numeric_match": 0.92,
       "numeric_n": 50,
       "citation_precision": 1.0,
@@ -36,7 +36,7 @@
       "median_latency_s": 9.66,
       "cost_usd": 0.0,
       "failures": {
-        "ungraded": 4,
+        "ungraded": 3,
         "reasoning": 1
       },
       "top_score_answerable": 0.98,

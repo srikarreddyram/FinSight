@@ -126,7 +126,8 @@ def sources(
         ciks = dict(con.execute("select ticker, cik from companies where ticker is not null").fetchall())
         out = []
         for t in pq.tickers:
-            years, co = pq.fiscal_years.get(t), companies.get(t)
+            # The parser resolves years against filings with text; facts go back further than the text does.
+            years, co = pq.fiscal_years.get(t) or fiscal.explicit_years(question), companies.get(t)
             if not years or co is None or t not in ciks:
                 continue
             year = max(years)

@@ -177,7 +177,10 @@ def _run_pipeline(pipe: Pipeline, q: EvalQuestion, retrieval_only: bool, t0: flo
         attempts=ans.attempts,
         figures=[f.model_dump() for f in ans.figures],
         calculations=[c.model_dump() for c in ans.calculations],
-        citations=[{"label": c.label, "doc_id": c.doc_id, "page": c.page} for c in ans.citations],
+        citations=[
+            {"label": c.label, "doc_id": c.doc_id, "page": c.page, "text": c.snippet if c.chunk_type == "facts" else None}
+            for c in ans.citations
+        ],
     )
     row["top_score"] = max((c.score or 0.0 for c in ans.retrieved), default=None) if pipe.cfg.rerank else None
     return {**row, "_retrieved": ans.retrieved, "_answer": ans, "_pq": pq, "_shown": ans.shown}
@@ -187,7 +190,7 @@ def _judge_row(row: dict, q: EvalQuestion, ans, judge: Judge) -> dict:
     if q.set == "xbrl":  # the answer key is exact, so no judge is needed
         row["correct"] = not row["refused"] and metrics.numeric_match(ans.answer + (ans.table_markdown or ""), q)
     elif q.answerable and not row["refused"]:
-        pages = {c.label: page_text(c.doc_id, c.page) for c in ans.citations}
+        pages = {c.label: c.snippet if c.chunk_type == "facts" else page_text(c.doc_id, c.page) for c in ans.citations}
         candidate = ans.answer + ("\n" + ans.table_markdown if ans.table_markdown else "")
         try:
             row["correct"], row["judge_reason"], row["citation_support"] = judge.grade(
@@ -266,6 +269,12 @@ def main() -> None:
         "--sets", nargs="+", default=["financebench", "unanswerable"], choices=["financebench", "india", "unanswerable", "xbrl"]
     )
     ap.add_argument("--limit", type=int, help="random sample of N questions per set (fixed seed)")
+    ap.add_argument(
+        "--types",
+        nargs="+",
+        choices=["metrics-generated", "domain-relevant", "novel-generated"],
+        help="FinanceBench question types",
+    )
     ap.add_argument("--retrieval-only", action="store_true", help="recall@10 without any LLM calls")
     ap.add_argument("--workers", type=int, default=2)
     ap.add_argument("--no-llm-parser", action="store_true", help="heuristic query parsing only")
@@ -314,6 +323,8 @@ def main() -> None:
             tickers = {docs[d].ticker for d in indexed if d in docs}
             for set_name in args.sets:
                 qs = [q for q in load_set(set_name) if eligible(q, indexed, tickers)]
+                if args.types and set_name == "financebench":
+                    qs = [q for q in qs if q.question_type in args.types]
                 if args.limit and len(qs) > args.limit:
                     qs = random.Random(7).sample(qs, args.limit)
                 if not qs:

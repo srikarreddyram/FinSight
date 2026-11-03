@@ -39,6 +39,7 @@ class PipelineConfig:
     expand_concepts: bool = True  # add the line items behind metrics like "quick ratio" to the search query
     rerank_k: int | None = None  # passages the LLM reads (None: the rerank_k setting)
     retry: bool = False  # when the model can't answer: look for what's missing and try once more
+    facts: bool = False  # add the company's standard financials from XBRL as a source (app/facts.py)
 
 
 RUNS: dict[str, PipelineConfig] = {
@@ -50,7 +51,17 @@ RUNS: dict[str, PipelineConfig] = {
     "D": PipelineConfig("D", hybrid=True, rerank=True, filters=False, expand_concepts=False),
     "E": PipelineConfig("E", rerank_k=8),
     "F": PipelineConfig("F", retry=True),
+    "G": PipelineConfig("G", retry=True, facts=True),
 }
+
+
+def tenk_docs() -> dict[tuple[str, int], str]:
+    """(ticker, fiscal year) -> doc_id of each indexed 10-K."""
+    from ingest.index import indexed_docs
+    from ingest.manifest import load_documents
+
+    indexed = indexed_docs()
+    return {(m.ticker, m.fiscal_year): d for d, m in load_documents().items() if d in indexed and m.doc_type == "10-K"}
 
 
 def available_years() -> dict[str, list[int]]:
@@ -76,6 +87,7 @@ class Pipeline:
         self.retriever = Retriever(self.s)
         self.reranker = Reranker(blend=self.s.rerank_blend, table_slots=self.s.table_slots)
         self.companies: dict[str, Company] = load_companies()
+        self.tenk_docs = tenk_docs()
         self.parser = QueryParser(self.companies, available_years(), llm=self.llm if self.cfg.llm_query_parser else None)
         self.collection = naive_collection(self.s) if self.cfg.naive_index else self.s.collection
         # The embedded Qdrant store isn't safe for concurrent use; LLM calls stay outside this lock.
@@ -120,8 +132,16 @@ class Pipeline:
         with self._retrieve_lock:
             return self._retrieve(question, pq)
 
+    def _facts(self, question: str, pq: ParsedQuery | None) -> list[Hit]:
+        if not self.cfg.facts:
+            return []
+        from app.facts import sources
+
+        return sources(pq, question, self.companies, self.tenk_docs)
+
     def _retrieve(self, question: str, pq: ParsedQuery | None) -> tuple[ParsedQuery | None, list[Hit], list[Hit]]:
         k = self.cfg.rerank_k or self.s.rerank_k
+        facts = self._facts(question, pq)
         if pq is not None and pq.is_comparison and pq.sub_queries:
             per = max(3, math.ceil(k * 1.5 / len(pq.sub_queries)))
             groups = []
@@ -130,9 +150,9 @@ class Pipeline:
             # interleave so every company is represented in the top of the list
             ranked = [h for tier in zip(*groups, strict=False) for h in tier]
             ranked += [h for g in groups for h in g if h not in ranked]
-            return pq, ranked[: max(k, per * len(groups))], ranked[:10]
+            return pq, ranked[: max(k, per * len(groups))] + facts, ranked[:10]
         ranked = self._rank(question, self._search(question, pq), max(k, 10))
-        return pq, ranked[:k], ranked[:10]
+        return pq, ranked[:k] + facts, ranked[:10]
 
     # ---------------------------------------------------------------- answering
 

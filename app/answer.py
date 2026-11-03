@@ -32,6 +32,7 @@ Rules:
   * list every derived number under `calculations` by operation and input figure names: growth [old, new] (percent change), subtract [a, b] (a minus b, e.g. "assets less liabilities" is subtract [assets, liabilities]), change [old, new] (new minus old), margin or share [part, whole] for anything stated as a percentage (margins, rates, returns, percent of sales), ratio [numerator, denominator] only for multiples (current ratio, turnover), sum, average, cagr [start, end] with periods = years between them, multiply [x] with factor = a constant from the question (e.g. 365 for days); a calculation may use earlier calculations as inputs, so build multi-step metrics as a chain and never state a computed number in the answer text;
   * write {fig:name} or {calc:name} wherever that number belongs in the answer. The placeholder already includes the currency symbol and scale (it renders as e.g. "$1,577 million" or "14.9%"), so don't add them around it.
 - Citations: end every sentence that states a fact with the tag(s) of the sources supporting it, e.g. "Revenue rose to {fig:rev_fy25} [S2]." Put tags before the full stop. Sentences without a tag will be deleted.
+- A source of type "facts" lists the company's standard financials from its XBRL data, as its 10-K reported them, in $ millions. Use it for any figure it lists; use the filing passages for everything else.
 - Watch fiscal years: each source says which company, fiscal year and page it is from. A filing for one year also contains prior-year comparatives; pick the column for the period the question asks about.
 - Never copy long passages from the sources; state facts in your own words.
 - Be concise: lead with the direct answer, then at most a few sentences of support. Plain prose or short bullets, no headings.
@@ -113,9 +114,10 @@ def source_id(i: int) -> str:
 def to_citation(i: int, h: Hit) -> Citation:
     c = h.chunk
     body = c.text.split("\n", 1)[-1]
+    facts = c.chunk_type == "facts"  # a table of XBRL figures rather than a page: the whole table is the snippet
     return Citation(
         id=source_id(i),
-        label=f"{c.company} {c.fiscal_label} p.{c.page}",
+        label=f"{c.company} {c.fiscal_label} XBRL" if facts else f"{c.company} {c.fiscal_label} p.{c.page}",
         doc_id=c.doc_id,
         company=c.company,
         fiscal_label=c.fiscal_label,
@@ -123,7 +125,7 @@ def to_citation(i: int, h: Hit) -> Citation:
         page_end=c.page_end,
         section=c.section,
         chunk_type=c.chunk_type,
-        snippet=body[:600],
+        snippet=c.text if facts else body[:600],
         score=h.rerank_score,
     )
 
@@ -389,6 +391,7 @@ def _tidy_units(text: str) -> str:
     ("$$1,577 million million" -> "$1,577 million", "14.9%%" -> "14.9%")."""
     text = re.sub(r"([$₹€£¥])\s*(-?)\s*\1", r"\2\1", text)  # "$-$1" -> "-$1", "$$1" -> "$1"
     text = re.sub(rf"\b{_SCALE_WORDS}s?\s+\1s?\b", r"\1", text)
+    text = re.sub(r"(\d)x\s+(days|times)\b", r"\1 \2", text)  # a ratio the model labels itself: "42.69x days"
     return re.sub(r"%\s*%", "%", text)
 
 

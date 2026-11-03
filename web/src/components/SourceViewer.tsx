@@ -22,12 +22,67 @@ const navBtn = {
   cursor: 'pointer',
 } as const
 
+// A facts source is a Markdown table of XBRL figures: a title line, then the table.
+function parseFacts(snippet: string) {
+  const lines = snippet.split('\n')
+  const cells = (line: string) => line.trim().replace(/^\||\|$/g, '').split('|').map((c) => c.trim())
+  const [head = [], ...rows] = lines.filter((l) => l.startsWith('|') && !/^\|[-\s|]+$/.test(l.trim())).map(cells)
+  return { title: lines[0], head, rows }
+}
+
+function FactsTable({ citation }: { citation: Citation }) {
+  const { title, head, rows } = parseFacts(citation.snippet)
+  const quotes = citation.highlight.toLowerCase().split('\n').filter(Boolean)
+  const used = (label: string) => quotes.some((q) => label.toLowerCase().includes(q) || q.includes(label.toLowerCase()))
+  const cell = { padding: '6px 10px', borderBottom: `1px solid ${C.rule}` }
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      <div style={{ padding: '12px 16px', borderBottom: `1px solid ${C.rule}` }}>
+        <SectionLabel>Source</SectionLabel>
+        <div style={{ fontFamily: F.display, fontWeight: 600, fontSize: 16, lineHeight: 1.3, marginTop: 4, color: C.text }} className="truncate">
+          {citation.company} · {citation.fiscal_label} · XBRL
+        </div>
+        <div style={{ fontFamily: F.body, fontSize: 12, color: C.muted, marginTop: 2 }}>{title}</div>
+      </div>
+      <div style={{ flex: 1, overflow: 'auto', background: C.bg, padding: 12 }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: F.body, fontSize: 12.5, background: C.surface, border: `1px solid ${C.rule}` }}>
+          <thead>
+            <tr>
+              {head.map((h, i) => (
+                <th key={h} style={{ ...cell, textAlign: i ? 'right' : 'left', color: C.muted, fontWeight: 600 }}>
+                  {h}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r[0]} style={{ background: used(r[0] ?? '') ? 'rgba(252, 211, 77, 0.35)' : undefined }}>
+                {r.map((c, i) => (
+                  <td key={`${r[0]}-${i}`} style={{ ...cell, ...(i ? NUM : {}), textAlign: i ? 'right' : 'left', color: C.text }}>
+                    {c}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, borderTop: `1px solid ${C.rule}`, padding: '8px 16px', fontFamily: F.body, fontSize: 12, color: C.muted }}>
+        <span style={{ width: 10, height: 10, borderRadius: 2, background: 'rgba(252, 211, 77, 0.8)' }} />
+        Highlighted: the rows the answer took its figures from
+      </div>
+    </div>
+  )
+}
+
 export function SourceViewer({ citation }: Props) {
   // The parent remounts this component (key) per citation, so page starts at the cited page.
   const [page, setPage] = useState(citation?.page ?? 1)
   const [loaded, setLoaded] = useState<string | null>(null)
   const [failed, setFailed] = useState<string | null>(null)
 
+  if (citation?.chunk_type === 'facts') return <FactsTable citation={citation} />
   if (!citation) {
     return (
       <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>

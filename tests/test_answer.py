@@ -223,3 +223,13 @@ def test_a_refusal_says_what_was_missing_and_keeps_rejected_figures_for_the_retr
 def test_feedback_reaches_the_prompt_only_on_a_retry():
     assert "first attempt" not in build_prompt("q", HITS, [])
     assert "A first attempt failed:\nYou could not find: capex" in build_prompt("q", HITS, [], "You could not find: capex")
+
+
+def test_a_ratio_the_model_labels_in_days_drops_its_x():
+    figs = [_fig("capex18", 1577), _fig("capex17", 1373)]
+    calcs = [
+        {"name": "r", "op": "ratio", "inputs": ["capex17", "capex18"], "periods": 0},
+        {"name": "d", "op": "multiply", "inputs": ["r"], "periods": 0, "factor": 365},
+    ]
+    ans = finalize("q", _raw("It takes {calc:r} days or {calc:d} days [S1].", figs, calcs), HITS)
+    assert ans.answer == "It takes 0.871 days or 317.78 days [3M FY18 p.60]."

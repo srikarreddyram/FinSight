@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 from app import fiscal
 
 DocType = Literal["10-K", "10-Q", "20-F", "8-K", "annual_report", "earnings_call", "other"]
-ChunkType = Literal["text", "table"]
+ChunkType = Literal["text", "table", "facts"]  # facts: standard financials from XBRL (app/facts.py)
 
 
 class Company(BaseModel):

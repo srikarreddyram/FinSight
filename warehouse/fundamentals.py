@@ -98,6 +98,12 @@ ITEMS: dict[str, tuple[tuple[str, ...], str]] = {
     "inventory": (("InventoryNet", "InventoryFinishedGoodsNetOfReserves"), "stock"),
     "short_term_debt": (("LongTermDebtCurrent", "DebtCurrent", "ShortTermBorrowings", "CommercialPaper"), "stock"),
     "dividends": (("PaymentsOfDividendsCommonStock", "PaymentsOfDividends"), "flow"),
+    # Copilot facts (app/facts.py): working-capital lines for days-payable and quick-ratio questions.
+    "accounts_payable": (("AccountsPayableCurrent", "AccountsPayableTradeCurrent"), "stock"),
+    "short_term_investments": (
+        ("ShortTermInvestments", "MarketableSecuritiesCurrent", "AvailableForSaleSecuritiesDebtSecuritiesCurrent"),
+        "stock",
+    ),
 }
 ANNUAL_DAYS = (340, 380)  # a fiscal year, allowing 52/53-week years
 ANNUAL_FORMS = ("10-K", "20-F", "40-F")

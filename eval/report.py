@@ -23,7 +23,7 @@ def _pct(x) -> str:
     return f"{x * 100:.1f}%" if 0.995 <= x < 1 else f"{x * 100:.0f}%"
 
 
-def _describe(run: str) -> tuple[str, str, str, str, str]:
+def _describe(run: str) -> tuple[str, str, str, str, str, str]:
     c = RUNS[run]
     return (
         "PyPDF, 1,000-token chunks" if c.naive_index else "Docling, section + table chunks",
@@ -31,6 +31,7 @@ def _describe(run: str) -> tuple[str, str, str, str, str]:
         "Yes" if c.rerank else "No",
         "Yes" if c.filters else "No",
         "Yes" if c.retry else "No",
+        "Yes" if c.facts else "No",
     )
 
 
@@ -68,14 +69,14 @@ def build() -> str:
         "",
         "## Ablation (FinanceBench open sample)",
         "",
-        "| Run | Parsing | Retrieval | Reranker | Filters | Retry | N | Accuracy | Numeric EM | Citation precision | Recall@10 | All evidence read | Median latency | Cost |",
-        "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|",
+        "| Run | Parsing | Retrieval | Reranker | Filters | Retry | XBRL facts | N | Accuracy | Numeric EM | Citation precision | Recall@10 | All evidence read | Median latency | Cost |",
+        "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|",
     ]
     for run in runs:
         r = results.get(f"{run}/financebench")
         if not r:
             continue
-        p, ret, rr, f, retry = _describe(run)
+        p, ret, rr, f, retry, xbrl = _describe(run)
         lat = f"{r['median_latency_s']} s" if r.get("median_latency_s") is not None else "–"
         calls = sum((r.get("llm_calls") or {}).values())
         if r.get("cost_usd"):
@@ -86,7 +87,7 @@ def build() -> str:
             cost = "–"
         n = f"{r['n']}" + ("" if r.get("complete", True) else " (partial)")
         out.append(
-            f"| {run} | {p} | {ret} | {rr} | {f} | {retry} | {n} | {_pct(r.get('accuracy'))} | {_pct(r.get('numeric_match'))} "
+            f"| {run} | {p} | {ret} | {rr} | {f} | {retry} | {xbrl} | {n} | {_pct(r.get('accuracy'))} | {_pct(r.get('numeric_match'))} "
             f"| {_pct(r.get('citation_precision'))} | {_pct(r.get('recall_at_10'))} | {_pct(r.get('evidence_complete'))} | {lat} | {cost} |"
         )
     out += [

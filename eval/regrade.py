@@ -39,7 +39,7 @@ def regrade(out_dir: Path, everything: bool = False) -> int:
         elif r.get("correct") is not None or not str(r.get("judge_reason", "")).startswith("judge error"):
             continue
         q = questions[r["id"]]
-        pages = {c["label"]: page_text(c["doc_id"], c["page"]) for c in r.get("citations", [])}
+        pages = {c["label"]: c.get("text") or page_text(c["doc_id"], c["page"]) for c in r.get("citations", [])}
         candidate = r["answer"] + ("\n" + r["table"] if r.get("table") else "")
         try:
             r["correct"], r["judge_reason"], r["citation_support"] = judge.grade(

@@ -1,0 +1,50 @@
+{
+  "config": {
+    "runs": [
+      "F"
+    ],
+    "sets": [
+      "financebench"
+    ],
+    "limit": null,
+    "retrieval_only": false,
+    "workers": 2,
+    "no_llm_parser": false,
+    "fresh": false
+  },
+  "models": {
+    "answer": "gemini:gemini-3.5-flash-lite",
+    "fast": "gemini:gemma-4-26b-a4b-it",
+    "judge": "gemini:gemma-4-26b-a4b-it"
+  },
+  "results": {
+    "F/financebench": {
+      "n": 150,
+      "accuracy": 0.803,
+      "numeric_match": 0.78,
+      "numeric_n": 59,
+      "citation_precision": 0.995,
+      "recall_at_10": 0.84,
+      "evidence_complete": 0.787,
+      "retried": 18,
+      "correct_after_retry": 11,
+      "correct_refusals": null,
+      "false_refusals": 0.04,
+      "median_latency_s": 12.11,
+      "cost_usd": 0.0,
+      "failures": {
+        "reasoning": 16,
+        "ungraded": 3,
+        "over-refusal": 6,
+        "retrieval": 7
+      },
+      "top_score_answerable": 0.98,
+      "top_score_unanswerable": null,
+      "complete": true,
+      "llm_calls": {
+        "gemini-3.5-flash-lite": 168,
+        "gemma-4-26b-a4b-it": 3
+      }
+    }
+  }
+}

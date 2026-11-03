@@ -53,10 +53,11 @@ def quarter_of(d: date, fye_month: int) -> str:
 
 _RANGE = re.compile(r"\b((?:19|20)\d{2})\s*[-–/]\s*(\d{4}|\d{2})\b(?!\s*[-/]\s*\d)")  # 2024-25 -> 2025
 _FY_PATTERNS = [
-    re.compile(r"\bFY\s?'?(\d{4})\b", re.I),  # FY2024, FY 2024
-    re.compile(r"\bFY\s?'?(\d{2})\b", re.I),  # FY24, FY'24
+    re.compile(r"\bFY\s?'?(\d{4})(?:Q[1-4])?\b", re.I),  # FY2024, FY 2024, FY2024Q1
+    re.compile(r"\bFY\s?'?(\d{2})(?:Q[1-4])?\b", re.I),  # FY24, FY'24
     re.compile(r"\bfiscal(?:\s+year)?\s+(\d{4})\b", re.I),  # fiscal 2024, fiscal year 2024
-    re.compile(r"\b((?:19|20)\d{2})\b"),  # bare years
+    re.compile(r"\bQ[1-4]((?:19|20)\d{2})\b", re.I),  # Q22023
+    re.compile(r"\b((?:19|20)\d{2})(?:Q[1-4])?\b"),  # bare years, 2023Q1
 ]
 
 

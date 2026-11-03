@@ -2,14 +2,19 @@
 
 uv run python -m eval.regrade                 # latest results directory
 uv run python -m eval.regrade eval/results/<timestamp>
+uv run python -m eval.regrade eval/results/<timestamp> --all   # re-judge every answer, in a new copy of the
+                                                               # results, so runs compare under one judge
 """
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
-import sys
+import shutil
+from datetime import datetime
 from pathlib import Path
+from types import SimpleNamespace
 
 from eval import metrics
 from eval.financebench_loader import load_questions
@@ -19,13 +24,19 @@ from eval.run import EVAL_DIR, gold_page_parsed, page_text, summarize
 log = logging.getLogger(__name__)
 
 
-def regrade(out_dir: Path) -> int:
+def regrade(out_dir: Path, everything: bool = False) -> int:
     rows = [json.loads(line) for line in (out_dir / "rows.jsonl").read_text().splitlines()]
     questions = {q.id: q for q in load_questions()}
     judge = Judge()
     fixed = 0
     for r in rows:
-        if r.get("correct") is not None or not str(r.get("judge_reason", "")).startswith("judge error"):
+        if r["answerable"] and "evidence_complete" not in r:  # older runs showed the model the top 8
+            shown = [SimpleNamespace(**c) for c in r["retrieved"][:8]]
+            r["evidence_complete"] = metrics.evidence_complete(shown, questions[r["id"]])
+        if everything:
+            if not r["answerable"] or r.get("refused"):
+                continue
+        elif r.get("correct") is not None or not str(r.get("judge_reason", "")).startswith("judge error"):
             continue
         q = questions[r["id"]]
         pages = {c["label"]: page_text(c["doc_id"], c["page"]) for c in r.get("citations", [])}
@@ -36,6 +47,7 @@ def regrade(out_dir: Path) -> int:
             )
         except Exception as e:  # noqa: BLE001
             log.warning("%s: still failing (%s)", r["id"], e)
+            r["correct"], r["judge_reason"], r["citation_support"], r["failure"] = None, f"judge error: {e}", {}, "ungraded"
             continue
         support = r.get("citation_support") or {}
         r["failure"] = metrics.tag_failure(
@@ -65,8 +77,15 @@ def regrade(out_dir: Path) -> int:
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     logging.getLogger("httpx").setLevel(logging.WARNING)
-    out_dir = Path(sys.argv[1]) if len(sys.argv) > 1 else sorted((EVAL_DIR / "results").glob("2*/"))[-1]
-    log.info("%s: re-graded %d rows", out_dir, regrade(out_dir))
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("results", nargs="?", type=Path)
+    ap.add_argument("--all", action="store_true", help="re-judge every answer, in a new copy of the results")
+    args = ap.parse_args()
+    out_dir = args.results or sorted((EVAL_DIR / "results").glob("2*/"))[-1]
+    if args.all:
+        src, out_dir = out_dir, EVAL_DIR / "results" / datetime.now().strftime("%Y%m%d-%H%M%S")
+        shutil.copytree(src, out_dir)
+    log.info("%s: re-graded %d rows", out_dir, regrade(out_dir, args.all))
 
 
 if __name__ == "__main__":

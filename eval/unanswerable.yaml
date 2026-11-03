@@ -48,3 +48,50 @@ questions:
   - id: unans_15
     question: How many Ulta Beauty stores had a franchise owner in FY2023?
     tickers: [ULTA]
+  # Nearer misses: each asks for the intersection of things a filing reports separately (AWS revenue and German
+  # revenue, Jordan Brand and gross margin), which is where a model that keeps searching is most tempted to answer.
+  - id: unans_16
+    question: What was Amazon's FY2017 AWS revenue from customers in Germany?
+    tickers: [AMZN]
+  - id: unans_17
+    question: What was 3M's FY2018 revenue from Post-it notes?
+    tickers: [MMM]
+  - id: unans_18
+    question: How many 737 MAX aircraft did Boeing deliver to Southwest Airlines in FY2022?
+    tickers: [BA]
+  - id: unans_19
+    question: What percentage of Netflix's paid subscribers were on the premium plan in FY2017?
+    tickers: [NFLX]
+  - id: unans_20
+    question: What was American Express's FY2022 card revenue in the state of Ohio?
+    tickers: [AXP]
+  - id: unans_21
+    question: What was the average salary of a Best Buy store manager in FY2023?
+    tickers: [BBY]
+  - id: unans_22
+    question: How much did PepsiCo spend on Super Bowl advertising in FY2022?
+    tickers: [PEP]
+  - id: unans_23
+    question: What gross margin did Nike earn on Air Jordan 1 shoes in FY2023?
+    tickers: [NKE]
+  - id: unans_24
+    question: How many Paxlovid treatment courses did Pfizer ship to Japan in Q2 of FY2023?
+    tickers: [PFE]
+  - id: unans_25
+    question: What was CVS Health's FY2022 pharmacy revenue in the city of Chicago?
+    tickers: [CVS]
+  - id: unans_26
+    question: How many EPYC server processors did AMD ship to Microsoft in FY2022?
+    tickers: [AMD]
+  - id: unans_27
+    question: What was Kraft Heinz's FY2019 revenue from Philadelphia cream cheese?
+    tickers: [KHC]
+  - id: unans_28
+    question: What bonus did Lockheed Martin pay its F-35 program manager in FY2022?
+    tickers: [LMT]
+  - id: unans_29
+    question: How many paid Microsoft Teams seats were there at the end of FY2023?
+    tickers: [MSFT]
+  - id: unans_30
+    question: What price per gallon did Walmart pay for diesel in FY2020?
+    tickers: [WMT]

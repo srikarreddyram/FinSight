@@ -5,6 +5,7 @@ formatting results.
 
 from __future__ import annotations
 
+import math
 import re
 from dataclasses import dataclass
 
@@ -72,14 +73,16 @@ def fmt_number(x: float, decimals: int | None = None) -> str:
     return ("-" if x < 0 else "") + s
 
 
-def fmt_quantity(q: Quantity) -> str:
+def fmt_quantity(q: Quantity, decimals: int | None = None) -> str:
+    """decimals: what the question asked for ("round to one decimal place"), else a sensible default."""
     if q.unit == "percent":
-        return f"{fmt_number(q.value, 2 if abs(q.value) < 100 else 1)}%"
+        return f"{fmt_number(q.value, decimals if decimals is not None else 2 if abs(q.value) < 100 else 1)}%"
     if q.unit == "ratio":
-        return f"{fmt_number(q.value, 2)}x"
+        # A third decimal under 1: at two, 0.014 and 0.008 would both read as 0.01x.
+        return f"{fmt_number(q.value, decimals if decimals is not None else 2 if abs(q.value) >= 1 else 3)}x"
     sym = CURRENCY_SYMBOLS.get(q.currency.upper(), f"{q.currency} " if q.currency else "")
     sign = "-" if q.value < 0 else ""
-    body = fmt_number(abs(q.value))
+    body = fmt_number(abs(q.value), decimals)
     if q.unit in ("currency", "per_share") and sym:
         return f"{sign}{sym}{body}{SCALE_WORDS.get(q.scale, '')}"
     return f"{sign}{body}{SCALE_WORDS.get(q.scale, '')}"
@@ -154,7 +157,13 @@ def calculate(op: str, inputs: list[Quantity], periods: int = 0, factor: float |
             raise CalcError("multiply needs a factor")
         x = inputs[0]
         unit = "other" if x.unit == "ratio" else x.unit
-        return Quantity(x.value * factor, unit=unit, currency=x.currency, scale=x.scale)
+        scale = x.scale
+        if unit in ("currency", "count") and _is_unit_conversion(factor):
+            # "$8,738 million" * 0.001 is the same amount in billions, so the label has to move with the digits.
+            scale = next((name for name, s in SCALES.items() if math.isclose(s, SCALES.get(x.scale, 1.0) / factor)), None)
+            if scale is None:  # no such scale here (trillions): keep the amount as printed
+                return x
+        return Quantity(x.value * factor, unit=unit, currency=x.currency, scale=scale)
     if op == "sum":
         _same_units(inputs)
         return _rescale(sum(q.base for q in inputs), inputs[0])
@@ -164,14 +173,35 @@ def calculate(op: str, inputs: list[Quantity], periods: int = 0, factor: float |
     raise CalcError(f"unknown operation {op!r}")
 
 
+def _is_unit_conversion(factor: float) -> bool:
+    """Powers of a thousand (0.001, 1e6) change the unit; anything else (365, 0.25) is real arithmetic."""
+    if factor <= 0 or factor == 1:
+        return False
+    power = round(math.log10(factor))
+    return power % 3 == 0 and math.isclose(factor, 10.0**power)
+
+
 def _need(inputs: list[Quantity], n: int) -> None:
     if len(inputs) != n:
         raise CalcError(f"expected {n} inputs, got {len(inputs)}")
 
 
-def fmt_calc(op: str, q: Quantity) -> str:
+def fmt_calc(op: str, q: Quantity, decimals: int | None = None) -> str:
     if op in ("subtract", "change", "difference") and q.unit == "other":
-        return f"{fmt_number(q.value, 2)} percentage points"
+        return f"{fmt_number(q.value, 2 if decimals is None else decimals)} percentage points"
     if op == "multiply" and q.unit == "other":
-        return fmt_number(q.value, 2)
-    return fmt_quantity(q)
+        return fmt_number(q.value, 2 if decimals is None else decimals)
+    return fmt_quantity(q, decimals)
+
+
+_DECIMALS = re.compile(r"\b(\d|zero|no|one|two|three|four)\s+decimal", re.I)
+_DECIMAL_WORDS = {"zero": 0, "no": 0, "one": 1, "two": 2, "three": 3, "four": 4}
+
+
+def requested_decimals(question: str) -> int | None:
+    """Round-to-N-places wording -> N, so results are shown the way the question asks."""
+    m = _DECIMALS.search(question)
+    if not m:
+        return None
+    word = m.group(1).lower()
+    return int(word) if word.isdigit() else _DECIMAL_WORDS[word]

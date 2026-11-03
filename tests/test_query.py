@@ -117,7 +117,7 @@ class _FakeLLM:
 
 def test_llm_cannot_add_companies_the_question_never_names():
     out = {
-        "tickers": ["MMM", "FL"],
+        "mentions": [{"ticker": "MMM", "words": "3M"}, {"ticker": "FL", "words": "net sales"}],
         "fiscal_years": [2018],
         "relative": "none",
         "n_years": 0,
@@ -129,6 +129,30 @@ def test_llm_cannot_add_companies_the_question_never_names():
     pq = QueryParser(COMPANIES, AVAILABLE, llm=_FakeLLM(out)).parse("By how much did 3M's net sales grow in 2018?")
     assert pq.tickers == ["MMM"] and not pq.is_comparison
     # but when no name matches, the LLM's resolution is used (only for companies with filings)
-    out2 = {**out, "tickers": ["INFY", "ZZZZ"], "is_comparison": False}
+    out2 = {
+        **out,
+        "mentions": [{"ticker": "INFY", "words": "India's second-largest IT exporter"}, {"ticker": "ZZZZ", "words": "exporter"}],
+        "is_comparison": False,
+    }
     pq2 = QueryParser(COMPANIES, AVAILABLE, llm=_FakeLLM(out2)).parse("What did India's second-largest IT exporter earn?")
     assert pq2.tickers == ["INFY"]
+    # a company the model can't point to in the question is a guess
+    out3 = {**out, "mentions": [{"ticker": "INFY", "words": "Infosys"}], "is_comparison": False}
+    pq3 = QueryParser(COMPANIES, AVAILABLE, llm=_FakeLLM(out3)).parse("What drove the reduction in SG&A expense in FY2024?")
+    assert pq3.tickers == [] and pq3.fiscal_years == {"*": [2018, 2024]}
+
+
+class _NoCalls:
+    def json(self, **_):
+        raise AssertionError("a named company needs no LLM call")
+
+
+def test_a_named_company_needs_no_llm_call():
+    pq = QueryParser(COMPANIES, AVAILABLE, llm=_NoCalls()).parse("What was Infosys's revenue in FY24?")
+    assert pq.tickers == ["INFY"] and pq.fiscal_years == {"INFY": [2024]}
+
+
+def test_guidance_for_a_year_also_searches_the_year_before():
+    assert parser().heuristic("Is Infosys's growth expected to accelerate in FY25?").fiscal_years == {"INFY": [2024, 2025]}
+    assert parser().heuristic("What was Infosys's revenue in FY25?").fiscal_years == {"INFY": [2025]}
+    assert parser().heuristic("What is the FY2022 outlook for 3M?").fiscal_years == {"MMM": [2022]}  # FY2021 isn't indexed

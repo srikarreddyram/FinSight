@@ -24,7 +24,7 @@ reranking, DuckDB, and public data from SEC EDGAR and Yahoo Finance.
 
 | Module | State | Headline result |
 |---|---|---|
-| 1. Research Copilot | Built, evaluated | FinanceBench: 81% recall@10, 96% citation precision, 64% answer accuracy on graded questions, 15/15 correct refusals |
+| 1. Research Copilot | Built, evaluated | FinanceBench: 80% answer accuracy on graded questions (66% before the retry loop, same judge), 99.5% citation precision, 30/30 correct refusals; 96/98 on lookups checked against XBRL |
 | 2. Analyst Agent | First version built | A research note on any company in about 25 seconds: bull case, bear case and what to watch from the latest 10-K, financials, news and FinSight's data; every figure filled in by Python or found in the source it cites |
 | 3. Fundamentals warehouse | Built | 45M XBRL facts, 22.7k 10-Ks split into Items, 6.7M daily prices, 758k filing-index rows, all point-in-time |
 | 4. Signal Lab | Built | 34 signals; leverage change is the one robust large-cap signal (rank IC 0.045, t = 4.1); price momentum and insider buying add nothing significant |
@@ -62,16 +62,18 @@ against its cited page and computes the result.
 
 ```
 question
-  └─ query parser ── companies, fiscal years ("last year" resolved per company), section hints
+  └─ query parser ── companies by name, fiscal years ("last year" resolved per company), section hints
        └─ hybrid search ── BM25 (Qdrant sparse) + bge-base dense, filtered, fused with RRF → top 30
-            └─ bge-reranker-base cross-encoder → top 8   (tables fed as linearized rows)
-                 └─ evidence gate ── best passage too weak? → "Not found in the filings" + closest passages
+            └─ bge-reranker-base cross-encoder → top 10   (tables fed as linearized rows)
+                 └─ evidence gate ── nothing relevant at all? → "Not found in the filings" + closest passages
                       └─ LLM (structured output): figures + quotes, calculation names, prose with
-                         {fig:x}/{calc:y} placeholders and [S#] citations
+                         {fig:x}/{calc:y} placeholders and [S#] citations, or the facts it couldn't find
                            └─ Python: verify each figure is printed in its source, compute growth /
                               margins / CAGR, fill placeholders, strip any sentence that is uncited,
                               cites a missing source, or contains a number its source doesn't have
-                                └─ answer with [Company FY p.N] citations → source viewer
+                                └─ no answer? one retry: search for each missing fact and 50 deep for the
+                                   question, then ask again with what went wrong; same checks
+                                     └─ answer with [Company FY p.N] citations → source viewer
 ```
 
 Comparison questions ("Compare Nike's and PepsiCo's gross margin…") fan out into one search per company, and
@@ -80,30 +82,40 @@ the answer includes a table.
 ### Results on FinanceBench
 
 150 questions over 84 filings from 32 companies ([`eval/REPORT.md`](eval/REPORT.md)). Answers by Gemini 3.5
-Flash-Lite; graded by Gemma 4 26B, a different model family, so the answering model never grades itself.
+Flash-Lite; graded by Gemma 4 26B, a separate model, so the answering model never grades itself.
 
-| Run | Parsing | Retrieval | Reranker | Filters | Recall@10 |
-|---|---|---|---|---|---|
-| A: naive baseline | PyPDF, 1,000-token chunks | Dense only | No | No | 41% |
-| B | Docling, section and table chunks | Dense only | No | No | 55% |
-| C | Docling | Hybrid (BM25 + dense) | No | No | 50% |
-| D | Docling | Hybrid | Yes | No | 59% |
-| **E: full system** | Docling | Hybrid | Yes | Yes | **81%** |
+| Run | Parsing | Retrieval | Reranker | Filters | Retry | Recall@10 |
+|---|---|---|---|---|---|---|
+| A: naive baseline | PyPDF, 1,000-token chunks | Dense only | No | No | No | 41% |
+| B | Docling, section and table chunks | Dense only | No | No | No | 55% |
+| C | Docling | Hybrid (BM25 + dense) | No | No | No | 50% |
+| D | Docling | Hybrid | Yes | No | No | 59% |
+| E | Docling | Hybrid | Yes | Yes | No | 81% |
+| **F: full system** | Docling | Hybrid | Yes | Yes | Yes | **84%** |
 
-Full system (run E):
+Run E against the full system, graded by the same judge (run E's answers were re-graded after a judge fix):
 
-| Metric | Result | Target |
-|---|---|---|
-| Answer accuracy | 88 correct of 138 graded (63.8%); 58.7% if the 12 the judge couldn't grade count as wrong | ≥ 60% |
-| Numeric match (within 1%) | 59% | ≥ 80% |
-| Citation precision | 96% | ≥ 90% |
-| Correct refusals on 15 unanswerable questions | 15/15 | ≥ 80% |
-| Median latency | 13 s | < 10 s |
-| Cost | Free tier, 284 LLM calls | |
+| Metric | Run E | Run F | Target |
+|---|---|---|---|
+| Answer accuracy, graded answers | 93 of 141 (66.0%) | **118 of 147 (80.3%)** | ≥ 60% |
+| Accuracy, ungraded counted wrong | 62.0% | **78.7%** | |
+| Numeric match (within 1%) | 59% | **78%** | ≥ 80% |
+| Citation precision | 98.7% | **99.5%** | ≥ 90% |
+| All gold evidence read | 69% | **79%** | |
+| Answerable questions refused | 30 | **6** | |
+| Correct refusals on unanswerable questions | 15/15 | **30/30** | ≥ 80% |
+| Median latency | 13 s | 12 s (31 s when it retries) | < 10 s |
+| Cost | Free tier, 284 LLM calls | Free tier, 171 LLM calls | |
 
-Most remaining failures are reasoning slips on ratio questions (a formula choice, or which year's balance to
-average) and over-refusals where the evidence gate or the figure check was too strict. Card
-[#23](https://github.com/srikarreddyram/FinSight/issues/23) tracks them.
+Of the 138 questions graded in both runs, 26 went from wrong to right and 5 from right to wrong. FinanceBench
+was studied closely while making these changes, so a second set checks the system on questions it was never
+tuned on: 98 lookups whose answers come from each filing's XBRL data, graded by numeric match with no judge
+([`eval/xbrl_set.py`](eval/xbrl_set.py)). 96 are correct.
+
+Of the 32 FinanceBench questions still missed, 16 are wrong with the evidence in hand (verdicts the gold
+disagrees with, formula or line-item choices), 7 are retrieval misses, 6 are refusals after the retry and 3
+went ungraded. Card [#23](https://github.com/srikarreddyram/FinSight/issues/23) tracks them; the analysis is in
+[`docs/phase-i-copilot-agent.md`](docs/phase-i-copilot-agent.md).
 
 ### Design notes
 
@@ -118,8 +130,18 @@ average) and over-refusals where the evidence gate or the figure check was too s
   tag would silently drop the right page.
 - **Fiscal years.** `fiscal_year` is the year a fiscal year ends in (Infosys FY26 = Apr 2025–Mar 2026), and
   "last year" resolves per company to the latest indexed year.
-- **One LLM call per answer.** A single structured call with placeholders gives the same guarantee as separate
-  extract, compute and write calls, at about half the latency.
+- **One LLM call per attempt, at most two attempts.** A single structured call with placeholders gives the same
+  guarantee as separate extract, compute and write calls, at about half the latency. When it can't answer, it
+  lists the facts it couldn't find, and the retry searches for exactly those.
+- **Retry, don't plan.** The model refused mostly when evidence was missing (6 of 103 FinanceBench questions with
+  every gold page in front of it, 24 of 47 without), so the loop runs only after a refusal or a rejected answer
+  and costs nothing on the 88% answered first time.
+- **Recall flatters two-statement questions.** Recall@10 counts one gold page as a hit; a ratio needs both
+  statements. Run E found a gold page for 86% of the multi-page questions but showed the model all of them for
+  46%, so the eval also reports whether all the evidence was read.
+- **The query parser's LLM call only runs when no company is named.** The regex pass retrieved as well for no
+  call, and the LLM had filtered two company-less questions to Adobe; now it must quote the words that name the
+  company, and Python checks they are in the question.
 - **EDGAR filings become PDFs.** Filings are HTML without pages, so headless Chrome prints them using their own
   page-break CSS, and page numbers match the filing's pagination.
 
@@ -331,7 +353,7 @@ uv run python -m ingest.parse --all             # Docling, ~2 min per 10-K, cach
 uv run python -m ingest.index --all             # embeddings + BM25 into Qdrant (embedded on disk)
 
 uv run python -m ingest.fetch_edgar AAPL MSFT NVDA --years 3     # more filings from EDGAR
-uv run python -m eval.run --runs E --sets financebench unanswerable && uv run python -m eval.report
+uv run python -m eval.run --runs F --sets financebench unanswerable xbrl && uv run python -m eval.report
 ```
 
 ### Research platform
@@ -375,7 +397,7 @@ cd web && npm install && npm run dev            # app on http://localhost:5173
 
 | Area | Tools |
 |---|---|
-| Language models | Gemini 3.5 Flash-Lite (answers) and Gemma 4 26B (query parsing, evaluation judge) on the free tier, throttled per model; Ollama for unlimited local runs; Anthropic optional |
+| Language models | Gemini 3.5 Flash-Lite (answers) and Gemma 4 26B (evaluation judge; query parsing when no company is named) on the free tier, throttled per model; Ollama for unlimited local runs; Anthropic optional |
 | Retrieval | Docling (tables), fastembed (bge-base, BM25, bge-reranker-base on ONNX), Qdrant |
 | Data | SEC EDGAR (submissions, XBRL company facts, filings), Yahoo Finance, Google News RSS, Wikipedia index change logs |
 | Storage and modelling | DuckDB, pandas, pyarrow, LightGBM |
@@ -404,7 +426,7 @@ data/       manifests only; filings, the warehouse and model outputs are generat
 
 ## Testing and CI
 
-220 Python tests cover parsing on real filing tables, fiscal-year logic, numeric verification, point-in-time
+247 Python tests cover parsing on real filing tables, fiscal-year logic, numeric verification, the Copilot's retry, point-in-time
 and leakage guarantees (every one checked by breaking it on purpose), index membership reconstruction, signals
 with hand-computed values, walk-forward purging, the backtest arithmetic, risk grades, the recommendation API,
 the move breakdown and its cited drivers, and the research notes' figure and citation checks.
@@ -419,7 +441,7 @@ cd web && npm run lint && npm run build
 
 Open items on the [project board](https://github.com/srikarreddyram/FinSight/issues):
 
-- Copilot accuracy: over-refusals and ratio formula choices
+- Copilot accuracy: verdict questions, formula choices, January fiscal-year names; latency (12 s median, 31 s with a retry)
 - Analyst Agent, second half: open-ended questions answered by a planner that sends sub-questions through the
   Copilot; notes that also read 10-Qs and earnings calls
 - Price history for delisted and acquired companies, to close the survivorship gap
@@ -444,6 +466,7 @@ Open items on the [project board](https://github.com/srikarreddyram/FinSight/iss
 | [`docs/phase-f-price-insider.md`](docs/phase-f-price-insider.md) | Price momentum and insider-buying signals, and the ranker with them |
 | [`docs/phase-g-analyst.md`](docs/phase-g-analyst.md) | Research notes: sources, figure checks, API and app |
 | [`docs/phase-h-research-tools.md`](docs/phase-h-research-tools.md) | 10-K changes, event timeline, sourced financials, Compare, time machine |
+| [`docs/phase-i-copilot-agent.md`](docs/phase-i-copilot-agent.md) | The Copilot's retry loop: what was failing, the fixes, run E against run F, the XBRL test set |
 
 ---
 

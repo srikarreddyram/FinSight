@@ -1,6 +1,6 @@
 from app.schemas import Citation
 from eval.financebench_loader import EvalQuestion, Evidence
-from eval.metrics import is_numeric_question, numeric_match, recall_at_k, tag_failure
+from eval.metrics import evidence_complete, is_numeric_question, numeric_match, recall_at_k, tag_failure
 
 Q = EvalQuestion(id="q", question="capex?", answer="$1577.00", evidence=[Evidence(doc_id="3M_2018_10K", page=60, text="")])
 
@@ -60,3 +60,33 @@ def test_failure_tags():
         tag_failure(correct=False, refused=True, answerable=False, recall10=None, gold_page_parsed=None, citations_ok=None)
         is None
     )
+
+
+def test_evidence_complete_needs_every_gold_page():
+    two_pages = Q.model_copy(
+        update={"evidence": [Evidence(doc_id="3M_2018_10K", page=60, text=""), Evidence(doc_id="3M_2018_10K", page=58, text="")]}
+    )
+    assert recall_at_k([_cite("3M_2018_10K", 60)], two_pages)  # one page is a recall hit
+    assert not evidence_complete([_cite("3M_2018_10K", 60)], two_pages)  # but half the evidence
+    assert evidence_complete([_cite("3M_2018_10K", 60), _cite("3M_2018_10K", 58)], two_pages)
+    assert evidence_complete([_cite("x", 1)], Q.model_copy(update={"evidence": []})) is None
+
+
+def test_an_ungraded_answer_is_not_counted_as_a_system_failure():
+    assert (
+        tag_failure(correct=None, refused=False, answerable=True, recall10=True, gold_page_parsed=None, citations_ok=None)
+        == "ungraded"
+    )
+
+
+def test_xbrl_answer_key_finds_the_value_on_a_matching_row_only():
+    from eval.xbrl_set import pages_with_value
+
+    tables = [
+        {"page": 60, "rows": [["(Millions)", "2018"], ["Purchases of property, plant and equipment", "(1,577)"]]},
+        {"page": 12, "rows": [["(Millions)", "2018"], ["Revenue from services", "1,577"]]},
+        {"page": 58, "rows": [["(Dollars)", "2018"], ["Property and equipment, net", "1,577,000,000"]]},
+    ]
+    assert pages_with_value(tables, 1_577_000_000, r"property|plant") == [58, 60]
+    assert pages_with_value(tables, -1_577_000_000, r"purchases") == [60]  # outflows are stored as either sign
+    assert pages_with_value(tables, 9_000_000, r"property") == []

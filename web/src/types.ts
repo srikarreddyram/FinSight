@@ -73,4 +73,4 @@ export interface DocumentInfo {
   downloaded: boolean
 }
 
-export type Run = 'A' | 'B' | 'C' | 'D' | 'E'
+export type Run = 'A' | 'B' | 'C' | 'D' | 'E' | 'F'

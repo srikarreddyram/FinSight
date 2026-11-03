@@ -79,15 +79,23 @@ class Settings(BaseSettings):
 
     # Retrieval
     retrieve_k: int = 30
-    rerank_k: int = 8
+    rerank_k: int = 10  # passages the LLM reads
     rrf_k: int = 60
     # Final ranking = blend * reranker score + (1 - blend) * normalised fusion score. 1.0 = pure reranker.
     # Tuned on half of FinanceBench (eval/tune_retrieval.py): held-out recall@10 76.0% -> 78.7%.
     rerank_blend: float = 0.6
     # Reserve this many of the final slots for the best-scoring tables (cross-encoders underrate grids).
     table_slots: int = 4
-    # Minimum sigmoid(reranker logit) of the best passage before we attempt an answer.
-    evidence_threshold: float = 0.05
+    # Minimum sigmoid(reranker logit) of the best passage before we attempt an answer. This only screens out
+    # the plainly irrelevant: reranker scores don't separate answerable from unanswerable (FinanceBench medians
+    # 0.98 and 0.82). At 0.05 the gate refused three answerable questions and caught no unanswerable ones.
+    evidence_threshold: float = 0.01
+
+    # One retry when the model can't answer: for each fact it says is missing (at most three), the best
+    # retry_need_k new passages, plus the best retry_k new passages from a deeper search for the question.
+    retry_need_k: int = 3
+    retry_depth: int = 50  # on the questions it refused, 50 found as much evidence as 100 or 200 at half the reranking
+    retry_k: int = 4
 
     # SEC EDGAR requires a User-Agent with a contact, e.g. "FinSight research you@example.com"
     sec_user_agent: str | None = None

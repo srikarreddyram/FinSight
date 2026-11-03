@@ -1,7 +1,8 @@
-"""Query path: parse -> filter -> hybrid search -> rerank -> evidence gate -> answer.
+"""Query path: parse -> filter -> hybrid search -> rerank -> evidence gate -> answer, then one retry
+that looks further if the model can't answer.
 
-The ablation runs A-E from the PRD are just PipelineConfig presets, so the benchmark exercises
-exactly the code the API serves.
+The ablation runs A-F are just PipelineConfig presets, so the benchmark exercises exactly the code
+the API serves.
 """
 
 from __future__ import annotations
@@ -13,12 +14,12 @@ import threading
 import time
 from dataclasses import dataclass
 
-from app.answer import SCHEMA, SYSTEM, build_prompt, finalize, refusal, to_citation
+from app.answer import SCHEMA, SYSTEM, build_prompt, finalize, refusal, retry_feedback, to_citation
 from app.concepts import expand
 from app.config import Settings, get_settings
 from app.llm import LLM, LLMError, QuotaExhausted, get_llm
 from app.query_parser import QueryParser
-from app.rerank import Reranker
+from app.rerank import Reranker, order
 from app.retrieve import Retriever, build_filter
 from app.schemas import Answer, Company, Hit, ParsedQuery
 from app.store import naive_collection
@@ -36,6 +37,8 @@ class PipelineConfig:
     evidence_gate: bool = True  # refuse when the best reranked passage is weak (needs rerank)
     llm_query_parser: bool = True
     expand_concepts: bool = True  # add the line items behind metrics like "quick ratio" to the search query
+    rerank_k: int | None = None  # passages the LLM reads (None: the rerank_k setting)
+    retry: bool = False  # when the model can't answer: look for what's missing and try once more
 
 
 RUNS: dict[str, PipelineConfig] = {
@@ -45,7 +48,8 @@ RUNS: dict[str, PipelineConfig] = {
     "B": PipelineConfig("B", hybrid=False, rerank=False, filters=False, evidence_gate=False, expand_concepts=False),
     "C": PipelineConfig("C", hybrid=True, rerank=False, filters=False, evidence_gate=False, expand_concepts=False),
     "D": PipelineConfig("D", hybrid=True, rerank=True, filters=False, expand_concepts=False),
-    "E": PipelineConfig("E"),
+    "E": PipelineConfig("E", rerank_k=8),
+    "F": PipelineConfig("F", retry=True),
 }
 
 
@@ -66,7 +70,7 @@ class Pipeline:
     def __init__(self, config: PipelineConfig | None = None, settings: Settings | None = None, llm: LLM | None = None):
         from ingest.manifest import load_companies
 
-        self.cfg = config or RUNS["E"]
+        self.cfg = config or RUNS["F"]
         self.s = settings or get_settings()
         self.llm = llm or get_llm()
         self.retriever = Retriever(self.s)
@@ -89,8 +93,8 @@ class Pipeline:
 
     # ---------------------------------------------------------------- retrieval
 
-    def _search(self, query: str, pq: ParsedQuery | None, ticker: str | None = None) -> list[Hit]:
-        kw = dict(collection=self.collection, hybrid=self.cfg.hybrid)
+    def _search(self, query: str, pq: ParsedQuery | None, ticker: str | None = None, k: int | None = None) -> list[Hit]:
+        kw = dict(collection=self.collection, hybrid=self.cfg.hybrid, k=k)
         sections = list(pq.sections) if pq is not None else []
         if self.cfg.expand_concepts:
             query, from_statements = expand(query)
@@ -117,7 +121,7 @@ class Pipeline:
             return self._retrieve(question, pq)
 
     def _retrieve(self, question: str, pq: ParsedQuery | None) -> tuple[ParsedQuery | None, list[Hit], list[Hit]]:
-        k = self.s.rerank_k
+        k = self.cfg.rerank_k or self.s.rerank_k
         if pq is not None and pq.is_comparison and pq.sub_queries:
             per = max(3, math.ceil(k * 1.5 / len(pq.sub_queries)))
             groups = []
@@ -158,29 +162,62 @@ class Pipeline:
         ans.usage = dict(usage)
         return ans
 
-    def answer_from(self, question: str, pq: ParsedQuery | None, sources: list[Hit], top10: list[Hit]) -> Answer:
+    def _attempt(self, question: str, pq: ParsedQuery | None, sources: list[Hit], feedback: str = "") -> Answer:
         """Evidence gate, then one structured LLM call, then Python verification (see app/answer.py)."""
         best = max((h.rerank_score or 0.0 for h in sources), default=0.0)
         if not sources or (self.cfg.rerank and self.cfg.evidence_gate and best < self.s.evidence_threshold):
-            ans = refusal(question, sources, pq, note="No passage in the indexed filings is relevant enough to answer.")
-        else:
-            try:
-                raw = self.llm.json(
-                    system=SYSTEM,
-                    user=build_prompt(question, sources, self.fy_notes(sources)),
-                    schema=SCHEMA,
-                    role="answer",
-                    effort="medium",
-                    max_tokens=8000,
-                )
-                ans = finalize(question, raw, sources, pq)
-            except QuotaExhausted:
-                raise  # not a real "not found": callers must see that the daily quota is spent
-            except LLMError as e:
-                log.error("answer generation failed: %s", e)
-                ans = refusal(question, sources, pq, note="The answer model is unavailable right now.")
-                ans.error = str(e)
+            return refusal(question, sources, pq, note="No passage in the indexed filings is relevant enough to answer.")
+        try:
+            raw = self.llm.json(
+                system=SYSTEM,
+                user=build_prompt(question, sources, self.fy_notes(sources), feedback),
+                schema=SCHEMA,
+                role="answer",
+                effort="medium",
+                max_tokens=8000,
+            )
+            return finalize(question, raw, sources, pq)
+        except QuotaExhausted:
+            raise  # not a real "not found": callers must see that the daily quota is spent
+        except LLMError as e:
+            log.error("answer generation failed: %s", e)
+            ans = refusal(question, sources, pq, note="The answer model is unavailable right now.")
+            ans.error = str(e)
+            return ans
+
+    def _look_further(self, question: str, pq: ParsedQuery | None, sources: list[Hit], missing: list[str]) -> list[Hit]:
+        """Passages the first attempt didn't read: a search for each fact the model says it couldn't find, then a
+        deeper search for the question itself, since the reranker normally sees only the top retrieve_k."""
+        seen = {h.chunk.chunk_id for h in sources}
+        more: list[Hit] = []
+
+        def add(query: str, depth: int, top: int) -> None:
+            hits = [h for h in self._search(query, pq, k=depth) if h.chunk.chunk_id not in seen]
+            picked = order(self.reranker.score(query, hits), top, self.reranker.blend, table_slots=1)
+            seen.update(h.chunk.chunk_id for h in picked)
+            more.extend(picked)
+
+        with self._retrieve_lock:
+            for need in missing[:3]:
+                add(need, self.s.retrieve_k, self.s.retry_need_k)
+            add(question, self.s.retry_depth, self.s.retry_k)
+        return more
+
+    def answer_from(self, question: str, pq: ParsedQuery | None, sources: list[Hit], top10: list[Hit]) -> Answer:
+        """Answer from the sources. If that fails and the pipeline retries, look further and try once more: the
+        model refuses mostly when evidence is missing (6 of 103 FinanceBench questions with every gold page shown,
+        24 of 47 without), and Python's rejections tell it what to fix. The second attempt passes the same checks."""
+        ans = self._attempt(question, pq, sources)
+        read = sources
+        if self.cfg.retry and ans.refused and not ans.error:
+            more = self._look_further(question, pq, sources, ans.missing)
+            if more or ans.stripped_sentences or any(not f.verified for f in ans.figures):
+                first, read = ans, sources + more
+                ans = self._attempt(question, pq, read, retry_feedback(first))
+                ans.attempts = 2
+                ans.missing = ans.missing or first.missing
         ans.retrieved = [to_citation(i, h) for i, h in enumerate(top10)]
+        ans.shown = [to_citation(i, h) for i, h in enumerate(read)]
         return ans
 
 

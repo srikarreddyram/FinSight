@@ -50,3 +50,11 @@ def test_relative_years_resolve_against_available_filings():
     assert fiscal.relative_years("growth over the last three years", [2021, 2022, 2023, 2024]) == [2022, 2023, 2024]
     assert fiscal.relative_years("year-over-year change", [2023, 2024]) == [2023, 2024]
     assert fiscal.relative_years("What was revenue?", [2024]) is None
+
+
+def test_years_glued_to_quarters():
+    from app.fiscal import explicit_years
+
+    assert explicit_years("As of FY2023Q1, what changed?") == [2023]
+    assert explicit_years("biggest drop in Q22023 revenue") == [2023]
+    assert explicit_years("In 2022Q4 and FY24Q1") == [2022, 2024]

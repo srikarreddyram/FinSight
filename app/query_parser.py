@@ -60,6 +60,9 @@ _DOC_HINTS = [
 ]
 
 
+_FORWARD = re.compile(r"\b(expect(s|ed|ing)?|guidance|outlook|forecasts?|anticipat\w+|project(s|ed|ions?))\b", re.I)
+
+
 class CompanyMatcher:
     def __init__(self, companies: Iterable[Company]):
         self.patterns: list[tuple[re.Pattern, str]] = []
@@ -108,6 +111,8 @@ class QueryParser:
     SYSTEM = (
         "You turn an analyst's question about company filings into search filters. "
         "Only use tickers from the provided company list; leave lists empty when the question doesn't say. "
+        "mentions: for each company the question refers to, its ticker and the exact words of the question that refer "
+        "to it. If no words in the question refer to a company, leave it empty: never guess one. "
         "fiscal_years: only years written explicitly (FY24 -> 2024; Indian-style '2024-25' -> 2025). "
         "relative: 'last_year' / 'last_n_years' (set n_years) / 'latest' when the question uses relative time, else 'none'. "
         "sub_queries: for questions about several companies, one self-contained question per company."
@@ -123,7 +128,18 @@ class QueryParser:
         return {
             "type": "object",
             "properties": {
-                "tickers": {"type": "array", "items": {"type": "string", "enum": sorted(self.companies)}},
+                "mentions": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "ticker": {"type": "string", "enum": sorted(self.companies)},
+                            "words": {"type": "string"},
+                        },
+                        "required": ["ticker", "words"],
+                        "additionalProperties": False,
+                    },
+                },
                 "fiscal_years": {"type": "array", "items": {"type": "integer"}},
                 "relative": {"type": "string", "enum": ["none", "last_year", "last_n_years", "latest"]},
                 "n_years": {"type": "integer"},
@@ -141,7 +157,7 @@ class QueryParser:
                 },
             },
             "required": [
-                "tickers",
+                "mentions",
                 "fiscal_years",
                 "relative",
                 "n_years",
@@ -196,6 +212,9 @@ class QueryParser:
             if not years and relative != "none" and avail:
                 a = sorted(avail)
                 years = a[-(n_years or 1) :] if relative == "last_n_years" else a[-1:]
+            if years and relative_text and _FORWARD.search(relative_text):
+                # Guidance for a year is published the year before: the FY2023 outlook is in the FY2022 results.
+                years = sorted({*years, *(y - 1 for y in years if y - 1 in avail)})
             if years:
                 pq.fiscal_years[t] = years
         if not pq.tickers and explicit:
@@ -203,7 +222,10 @@ class QueryParser:
 
     def parse(self, question: str) -> ParsedQuery:
         pq = self.heuristic(question)
-        if self.llm is None:
+        # A name in the question settles the company, and the regex pass handles years, sections and comparisons.
+        # On FinanceBench it retrieved as well as the LLM parser, for no call (all gold pages in the top 8: 71.3% vs
+        # 68.7%), so the LLM only runs when the question names no company outright.
+        if self.llm is None or pq.tickers:
             return pq
         try:
             out = self.llm.json(
@@ -212,11 +234,19 @@ class QueryParser:
         except Exception as e:  # noqa: BLE001 - the heuristic parse is a complete fallback
             log.warning("LLM query parse failed, using heuristics: %s", e)
             return pq
-        # Exact name/alias matches are reliable and small models sometimes add companies that were never
-        # mentioned (Gemma turned a 3M question into 3M vs MakeMyTrip). So LLM tickers are only used when the
-        # regex found none, and only for companies that have indexed filings.
-        llm_tickers = [t for t in out.get("tickers", []) if t in self.companies and self.available.get(t)]
-        merged = pq.tickers or llm_tickers
+        # Small models name companies that were never mentioned (Gemma filtered two company-less FinanceBench
+        # questions to Adobe, the first ticker in the list). So the model must quote the words that refer to the
+        # company, Python checks they are in the question, and only companies with indexed filings count.
+        merged = list(
+            dict.fromkeys(
+                m["ticker"]
+                for m in out.get("mentions", [])
+                if len(m.get("words", "").strip()) >= 3
+                and m["words"].strip().lower() in question.lower()
+                and m["ticker"] in self.companies
+                and self.available.get(m["ticker"])
+            )
+        )
         llm_pq = ParsedQuery(
             question=question,
             tickers=merged,

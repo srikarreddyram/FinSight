@@ -7,15 +7,18 @@ import statistics
 
 from app.numbers import numbers_in
 from app.schemas import Citation
-from eval.financebench_loader import EvalQuestion
+from eval.financebench_loader import EvalQuestion, Evidence
 
 _YEAR = re.compile(r"^(19|20)\d{2}$")
 _SCALES = (1.0, 1e3, 1e6, 1e9, 1e-3, 1e-6, 1e-9)
 
 
+def _on_page(c: Citation, e: Evidence) -> bool:
+    return e.doc_id == c.doc_id and c.page <= e.page <= (c.page_end or c.page)
+
+
 def hit_gold(c: Citation, q: EvalQuestion) -> bool:
-    end = c.page_end or c.page
-    return any(e.doc_id == c.doc_id and c.page <= e.page <= end for e in q.evidence)
+    return any(_on_page(c, e) for e in q.evidence)
 
 
 def recall_at_k(retrieved: list[Citation], q: EvalQuestion, k: int = 10) -> bool | None:
@@ -23,6 +26,14 @@ def recall_at_k(retrieved: list[Citation], q: EvalQuestion, k: int = 10) -> bool
     if not q.evidence:
         return None
     return any(hit_gold(c, q) for c in retrieved[:k])
+
+
+def evidence_complete(shown: list[Citation], q: EvalQuestion) -> bool | None:
+    """Did the model read every gold evidence page? Recall counts one page as a hit, which flatters a ratio
+    whose inputs sit on two different statements."""
+    if not q.evidence:
+        return None
+    return all(any(_on_page(c, e) for c in shown) for e in q.evidence)
 
 
 def gold_numbers(answer: str) -> list[float]:
@@ -63,6 +74,8 @@ def tag_failure(
     """Assign one failure category (PRD: parsing / retrieval / reasoning / citation)."""
     if not answerable:
         return None if refused else "hallucinated (should refuse)"
+    if correct is None:
+        return "ungraded"  # the judge failed, so nothing is known about this answer
     if correct:
         return "citation" if citations_ok is False else None
     if recall10 is False:

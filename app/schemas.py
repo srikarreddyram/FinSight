@@ -154,5 +154,8 @@ class Answer(BaseModel):
     retrieved: list[Citation] = Field(default_factory=list)  # reranked evidence list, for eval/debug
     parsed_query: ParsedQuery | None = None
     stripped_sentences: list[str] = Field(default_factory=list)
+    missing: list[str] = Field(default_factory=list)  # what the model said it couldn't find
+    attempts: int = 1  # 2 when the first attempt failed and the pipeline looked further
+    shown: list[Citation] = Field(default_factory=list, exclude=True)  # every passage the model read; for eval
     timings: dict[str, float] = Field(default_factory=dict)
     usage: dict[str, int] = Field(default_factory=dict)

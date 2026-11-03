@@ -12,7 +12,8 @@ SYSTEM = """You grade answers from a financial-filings QA system. Be strict.
 - yes/no questions must reach the same conclusion;
 - for open-ended questions the central conclusion must match and the supporting points must not contradict the gold;
 - extra correct detail is fine; any claim contradicting the gold makes it "incorrect";
-- a refusal ("Not found in the filings") is "incorrect".
+- a refusal ("Not found in the filings") is "incorrect";
+- judge the answer's content only: whether its citations hold up is the next question and must not change the verdict.
 
 2. citations: for each cited page label, supported=true if that page's text contains the facts or figures the answer
 attributes to it (figures may be rounded or rescaled; derived numbers such as growth rates only need their inputs on the page).

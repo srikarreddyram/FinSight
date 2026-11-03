@@ -1,4 +1,4 @@
-from app.answer import NOT_FOUND, finalize
+from app.answer import NOT_FOUND, build_prompt, finalize, retry_feedback
 from app.schemas import Chunk, Hit
 
 CASH_FLOW = (
@@ -157,3 +157,69 @@ def test_net_working_capital_style_subtraction_keeps_its_sign():
     calcs = [{"name": "gap", "op": "subtract", "inputs": ["capex18", "capex17"], "periods": 0}]
     ans = finalize("q", _raw("The gap is {calc:gap} [S1].", figs, calcs), HITS)
     assert ans.answer == "The gap is $204 million [3M FY18 p.60]."
+
+
+def test_a_year_followed_by_a_comma_is_not_a_stray_number():
+    ans = finalize("q", _raw("On May 3, 2023, spending went to new capacity [S2]."), HITS)
+    assert not ans.stripped_sentences and "May 3, 2023," in ans.answer
+
+
+def test_numbers_restated_from_the_question_are_allowed():
+    ans = finalize("Did spending top 20% of sales?", _raw("Spending stayed under 20% of sales [S2]."), HITS)
+    assert not ans.stripped_sentences
+    assert finalize("q", _raw("Spending stayed under 20% of sales [S2]."), HITS).refused
+
+
+def test_a_sentence_with_a_placeholder_cites_the_sources_of_its_figures():
+    ans = finalize("q", _raw("Capex was {fig:capex18}.", [_fig("capex18", 1577)]), HITS)
+    assert ans.answer == "Capex was $1,577 million [3M FY18 p.60]."
+    figs = [_fig("capex18", 1577), _fig("capex17", 1373)]
+    calcs = [{"name": "g", "op": "growth", "inputs": ["capex17", "capex18"], "periods": 0}]
+    assert finalize("q", _raw("Capex grew {calc:g}.", figs, calcs), HITS).answer == "Capex grew 14.86% [3M FY18 p.60]."
+
+
+def test_an_opening_verdict_without_a_tag_is_still_removed():
+    ans = finalize("q", _raw("Capex rose sharply. Spending went to new capacity [S2]."), HITS)
+    assert ans.answer == "Spending went to new capacity [3M FY18 p.47]."
+
+
+def test_initials_do_not_split_sentences():
+    ans = finalize("q", _raw("Mary N. Dillon led the move to new capacity [S2]."), HITS)
+    assert not ans.stripped_sentences and "Mary N. Dillon" in ans.answer
+
+
+def test_a_converted_figure_carries_the_right_unit():
+    calcs = [{"name": "b", "op": "multiply", "inputs": ["capex18"], "periods": 0, "factor": 0.001}]
+    ans = finalize("q", _raw("Capex was {calc:b} [S1].", [_fig("capex18", 1577)], calcs), HITS)
+    assert ans.answer == "Capex was $1.58 billion [3M FY18 p.60]."
+
+
+def test_calculations_are_shown_the_way_the_question_asks():
+    figs = [_fig("capex18", 1577), _fig("capex17", 1373)]
+    calcs = [{"name": "g", "op": "growth", "inputs": ["capex17", "capex18"], "periods": 0}]
+    ans = finalize("Growth? Round to one decimal place.", _raw("Capex grew {calc:g} [S1].", figs, calcs), HITS)
+    assert ans.answer == "Capex grew 14.9% [3M FY18 p.60]."
+
+
+def test_a_refusal_says_what_was_missing_and_keeps_rejected_figures_for_the_retry():
+    raw = {
+        "answerable": False,
+        "figures": [],
+        "calculations": [],
+        "answer": "",
+        "table": {"columns": [], "rows": []},
+        "missing": ["capex FY2019"],
+    }
+    ans = finalize("q", raw, HITS)
+    assert ans.refused and ans.missing == ["capex FY2019"]
+    assert "You could not find: capex FY2019" in retry_feedback(ans)
+
+    ans = finalize("q", _raw("Capex was {fig:capex18} [S1].", [_fig("capex18", 1650)]), HITS)
+    assert ans.refused and [f.verified for f in ans.figures] == [False]
+    feedback = retry_feedback(ans)
+    assert "capex18 = 1650 (S1)" in feedback and "rejected" in feedback
+
+
+def test_feedback_reaches_the_prompt_only_on_a_retry():
+    assert "first attempt" not in build_prompt("q", HITS, [])
+    assert "A first attempt failed:\nYou could not find: capex" in build_prompt("q", HITS, [], "You could not find: capex")

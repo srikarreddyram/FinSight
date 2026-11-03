@@ -1,0 +1,47 @@
+{
+  "config": {
+    "runs": [
+      "F"
+    ],
+    "sets": [
+      "xbrl"
+    ],
+    "limit": null,
+    "retrieval_only": false,
+    "workers": 2,
+    "no_llm_parser": false,
+    "fresh": true
+  },
+  "models": {
+    "answer": "gemini:gemini-3.5-flash-lite",
+    "fast": "gemini:gemma-4-26b-a4b-it",
+    "judge": "gemini:gemma-4-26b-a4b-it"
+  },
+  "results": {
+    "F/xbrl": {
+      "n": 98,
+      "accuracy": 0.98,
+      "numeric_match": 0.98,
+      "numeric_n": 98,
+      "citation_precision": null,
+      "recall_at_10": 0.969,
+      "evidence_complete": 0.98,
+      "retried": 1,
+      "correct_after_retry": 1,
+      "correct_refusals": null,
+      "false_refusals": 0.0,
+      "median_latency_s": 9.88,
+      "cost_usd": 0.0,
+      "failures": {
+        "reasoning": 1,
+        "retrieval": 1
+      },
+      "top_score_answerable": 1.0,
+      "top_score_unanswerable": null,
+      "complete": true,
+      "llm_calls": {
+        "gemini-3.5-flash-lite": 99
+      }
+    }
+  }
+}

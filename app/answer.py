@@ -8,7 +8,8 @@ with {fig:name} / {calc:name} placeholders and cite sources as [S#]. Python then
   2. does all arithmetic (growth, margins, ratios, CAGR),
   3. fills the placeholders, so every number in the answer came from a source or from Python,
   4. strips sentences that are uncited, cite unknown sources, depend on an unverified figure, or
-     contain a hard-coded number that doesn't appear in the sources they cite,
+     contain a hard-coded number that appears in neither the sources they cite nor the question
+     (a sentence with a placeholder but no tag cites the sources of its figures),
   5. rewrites [S#] tags as [Company FY p.N] citations.
 """
 
@@ -16,7 +17,7 @@ from __future__ import annotations
 
 import re
 
-from app.numbers import CalcError, Quantity, appears_in, calculate, fmt_calc, fmt_quantity, numbers_in
+from app.numbers import CalcError, Quantity, appears_in, calculate, fmt_calc, fmt_quantity, numbers_in, requested_decimals
 from app.schemas import Answer, Calculation, Citation, Figure, Hit, ParsedQuery
 
 NOT_FOUND = "Not found in the filings."
@@ -24,10 +25,11 @@ NOT_FOUND = "Not found in the filings."
 SYSTEM = """You are FinSight, an analyst's assistant that answers questions strictly from excerpts of company filings (10-Ks, 10-Qs, annual reports, earnings-call transcripts).
 
 Rules:
-- Use only the numbered sources. If they don't contain what the question needs, set answerable=false and leave the rest empty. Never use outside knowledge, never guess.
+- Use only the numbered sources. If they don't contain what the question needs, set answerable=false, leave the rest empty and list under `missing` the specific facts you would need (at most three, e.g. "total current liabilities FY2017"). Never use outside knowledge, never guess.
+- A question asking for a judgement ("is it capital-intensive?", "is liquidity healthy?", "which segment did best?") is answerable when the sources hold the relevant figures: work out the metric and lead with a plain verdict, tagged like any other sentence. If the metric it names doesn't suit this kind of company (gross margin for a bank), say so and say why, citing the source that shows it; that is an answer, not a refusal.
 - Numbers: never type a number from a source directly into the answer and never do arithmetic yourself. Instead:
   * list each number you use under `figures`, transcribed exactly as printed (without rescaling; report outflows and expenses shown in parentheses, such as capex (1,577), as positive amounts, and keep a minus sign only for losses, declines or negative balances), with its unit, currency, scale (e.g. "millions" when the table header says "(Millions)", "crore" for "₹ crore"), the period it refers to, the source id, and as `quote` the row label or phrase the number appears with (at most 12 words, e.g. "Purchases of property, plant and equipment (PP&E)");
-  * list every derived number under `calculations` by operation and input figure names: growth [old, new] (percent change), subtract [a, b] (a minus b, e.g. "assets less liabilities" is subtract [assets, liabilities]), change [old, new] (new minus old), margin or share [part, whole], ratio [numerator, denominator], sum, average, cagr [start, end] with periods = years between them, multiply [x] with factor = a constant from the question (e.g. 365 for days); a calculation may use earlier calculations as inputs, so build multi-step metrics as a chain and never state a computed number in the answer text;
+  * list every derived number under `calculations` by operation and input figure names: growth [old, new] (percent change), subtract [a, b] (a minus b, e.g. "assets less liabilities" is subtract [assets, liabilities]), change [old, new] (new minus old), margin or share [part, whole] for anything stated as a percentage (margins, rates, returns, percent of sales), ratio [numerator, denominator] only for multiples (current ratio, turnover), sum, average, cagr [start, end] with periods = years between them, multiply [x] with factor = a constant from the question (e.g. 365 for days); a calculation may use earlier calculations as inputs, so build multi-step metrics as a chain and never state a computed number in the answer text;
   * write {fig:name} or {calc:name} wherever that number belongs in the answer. The placeholder already includes the currency symbol and scale (it renders as e.g. "$1,577 million" or "14.9%"), so don't add them around it.
 - Citations: end every sentence that states a fact with the tag(s) of the sources supporting it, e.g. "Revenue rose to {fig:rev_fy25} [S2]." Put tags before the full stop. Sentences without a tag will be deleted.
 - Watch fiscal years: each source says which company, fiscal year and page it is from. A filing for one year also contains prior-year comparatives; pick the column for the period the question asks about.
@@ -97,8 +99,9 @@ SCHEMA = {
             "required": ["columns", "rows"],
             "additionalProperties": False,
         },
+        "missing": {"type": "array", "items": {"type": "string"}},
     },
-    "required": ["answerable", "figures", "calculations", "answer", "table"],
+    "required": ["answerable", "figures", "calculations", "answer", "table", "missing"],
     "additionalProperties": False,
 }
 
@@ -125,7 +128,7 @@ def to_citation(i: int, h: Hit) -> Citation:
     )
 
 
-def build_prompt(question: str, hits: list[Hit], fy_notes: list[str]) -> str:
+def build_prompt(question: str, hits: list[Hit], fy_notes: list[str], feedback: str = "") -> str:
     parts = []
     for i, h in enumerate(hits):
         c = h.chunk
@@ -135,7 +138,28 @@ def build_prompt(question: str, hits: list[Hit], fy_notes: list[str]) -> str:
             f"{c.text}\n</source>"
         )
     notes = ("\nFiscal-year conventions:\n" + "\n".join(f"- {n}" for n in fy_notes)) if fy_notes else ""
-    return "Sources:\n" + "\n\n".join(parts) + f"\n{notes}\n\nQuestion: {question}"
+    retry = (
+        f"\n\nA first attempt failed:\n{feedback}\nIf the sources now allow an answer, give it; if not, set answerable=false."
+        if feedback
+        else ""
+    )
+    return "Sources:\n" + "\n\n".join(parts) + f"\n{notes}{retry}\n\nQuestion: {question}"
+
+
+def retry_feedback(first: Answer) -> str:
+    """Why a first attempt failed, in terms the model can act on."""
+    lines = []
+    if first.missing:
+        lines.append(f"You could not find: {'; '.join(first.missing)}. More sources have been added below.")
+    unverified = [f"{f.name} = {f.value:g} ({f.source_id})" for f in first.figures if not f.verified]
+    if unverified:
+        lines.append(
+            f"These figures are not printed in the source you cited: {', '.join(unverified)}. "
+            "Copy each number exactly as printed, without rounding or rescaling, from a source that prints it."
+        )
+    if first.stripped_sentences:
+        lines.append(f"These sentences were rejected: {' | '.join(first.stripped_sentences[:4])}")
+    return "\n".join(lines)
 
 
 # --------------------------------------------------------------------------------------------
@@ -148,7 +172,7 @@ _YEARISH = re.compile(r"^(19|20)\d{2}$")
 
 
 _ABBREV = re.compile(
-    r"\b(U\.S|U\.K|Inc|Co|Corp|Ltd|Bros|No|vs|e\.g|i\.e|etc|Dr|Mr|Ms|Mrs|St|approx|Rs|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sept?|Oct|Nov|Dec)\.$"
+    r"\b([A-Z]|U\.S|U\.K|Inc|Co|Corp|Ltd|Bros|No|vs|e\.g|i\.e|etc|Dr|Mr|Ms|Mrs|St|approx|Rs|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sept?|Oct|Nov|Dec)\.$"
 )
 
 
@@ -188,7 +212,7 @@ def _stray_numbers(sentence: str) -> list[float]:
     s = re.sub(r"\b(FY|Q)\s?'?\d{1,4}\b", "", s, flags=re.I)
     s = re.sub(r"^\s*(\d+[.)]|[-*])\s+", "", s)
     out = []
-    for tok in re.findall(r"\d[\d,]*(?:\.\d+)?", s):
+    for tok in re.findall(r"\d+(?:,\d+)*(?:\.\d+)?", s):
         if _YEARISH.match(tok):
             continue
         v = float(tok.replace(",", ""))
@@ -196,6 +220,11 @@ def _stray_numbers(sentence: str) -> list[float]:
             continue
         out.append(v)
     return out
+
+
+def _add_tags(sentence: str, ids: list[str]) -> str:
+    """Citation tags go before the sentence's closing punctuation."""
+    return re.sub(r"\s*([.!?]*)\s*$", lambda m: f" [{', '.join(ids)}]{m.group(1)}", sentence, count=1)
 
 
 def _is_prose(sentence: str) -> bool:
@@ -210,7 +239,7 @@ def finalize(question: str, raw: dict, hits: list[Hit], pq: ParsedQuery | None =
     texts = {source_id(i): h.chunk.text for i, h in enumerate(hits)}
 
     if not raw.get("answerable", False):
-        return refusal(question, hits, pq)
+        return refusal(question, hits, pq, missing=raw.get("missing"))
 
     # 1. verify figures against their cited source
     figures: dict[str, Figure] = {}
@@ -226,6 +255,7 @@ def finalize(question: str, raw: dict, hits: list[Hit], pq: ParsedQuery | None =
             quantities[f["name"]] = q
 
     # 2. arithmetic in Python
+    decimals = requested_decimals(question)
     calcs: dict[str, Calculation] = {}
     for c in raw.get("calculations", []):
         try:
@@ -234,7 +264,7 @@ def finalize(question: str, raw: dict, hits: list[Hit], pq: ParsedQuery | None =
                 raise CalcError(f"unverified or unknown inputs: {missing}")
             result = calculate(c["op"], [quantities[n] for n in c["inputs"]], c.get("periods", 0), c.get("factor"))
             calcs[c["name"]] = Calculation(
-                name=c["name"], op=c["op"], inputs=c["inputs"], value=result.value, display=fmt_calc(c["op"], result)
+                name=c["name"], op=c["op"], inputs=c["inputs"], value=result.value, display=fmt_calc(c["op"], result, decimals)
             )
             quantities[c["name"]] = result  # later calculations may build on this one
         except CalcError as e:
@@ -250,6 +280,22 @@ def finalize(question: str, raw: dict, hits: list[Hit], pq: ParsedQuery | None =
         c = calcs.get(name)
         return c.display if c and c.value is not None else None
 
+    def sources_behind(sentence: str) -> list[str]:
+        """The sources of the figures a sentence's placeholders rest on, following calculations to their inputs."""
+        ids: list[str] = []
+        todo = [m.group(2) for m in _PLACEHOLDER.finditer(sentence)]
+        seen: set[str] = set()
+        while todo:
+            name = todo.pop(0)
+            if name in seen:
+                continue
+            seen.add(name)
+            if name in figures and figures[name].source_id not in ids:
+                ids.append(figures[name].source_id)
+            elif name in calcs:
+                todo += calcs[name].inputs
+        return ids
+
     # 3-4. sentence-level checks, then fill placeholders
     kept, stripped, used = [], [], []
     for sent in _split_sentences(raw.get("answer", "")):
@@ -257,13 +303,15 @@ def finalize(question: str, raw: dict, hits: list[Hit], pq: ParsedQuery | None =
             kept.append(sent)
             continue
         ids = _cited_ids(sent)
+        if not ids and (ids := sources_behind(sent)):
+            sent = _add_tags(sent, ids)  # its numbers have known sources, so it can cite them itself
         problems = []
         if _is_prose(sent) and not ids:
             problems.append("uncited")
         if any(i not in by_id for i in ids):
             problems.append("unknown source")
         cited_text = " ".join(texts.get(i, "") for i in ids)
-        if any(not appears_in(v, cited_text) for v in _stray_numbers(sent)):
+        if any(not appears_in(v, cited_text) and not appears_in(v, question) for v in _stray_numbers(sent)):
             problems.append("number not in cited source")
         filled = sent
         for m in list(_PLACEHOLDER.finditer(sent)):
@@ -282,7 +330,12 @@ def finalize(question: str, raw: dict, hits: list[Hit], pq: ParsedQuery | None =
     body = re.sub(r"\n{3,}", "\n\n", body).strip()
     if not body:
         return refusal(
-            question, hits, pq, note="The model's answer could not be supported by the retrieved passages.", stripped=stripped
+            question,
+            hits,
+            pq,
+            note="The model's answer could not be supported by the retrieved passages.",
+            stripped=stripped,
+            figures=list(figures.values()),
         )
 
     # 5. [S#] -> [Company FY p.N]
@@ -309,6 +362,7 @@ def finalize(question: str, raw: dict, hits: list[Hit], pq: ParsedQuery | None =
         retrieved=cits,
         parsed_query=pq,
         stripped_sentences=stripped,
+        missing=raw.get("missing") or [],
     )
 
 
@@ -339,7 +393,13 @@ def _tidy_units(text: str) -> str:
 
 
 def refusal(
-    question: str, hits: list[Hit], pq: ParsedQuery | None = None, note: str = "", stripped: list[str] | None = None
+    question: str,
+    hits: list[Hit],
+    pq: ParsedQuery | None = None,
+    note: str = "",
+    stripped: list[str] | None = None,
+    missing: list[str] | None = None,
+    figures: list[Figure] | None = None,
 ) -> Answer:
     cits = [to_citation(i, h) for i, h in enumerate(hits)]
     text = NOT_FOUND + (f" {note}" if note else "") + (" The closest passages are listed below." if cits else "")
@@ -351,6 +411,8 @@ def refusal(
         retrieved=cits,
         parsed_query=pq,
         stripped_sentences=stripped or [],
+        missing=missing or [],
+        figures=figures or [],
     )
 
 

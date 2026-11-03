@@ -1,4 +1,4 @@
-"""Benchmark runner: ablation runs A-E over FinanceBench, the India set and the unanswerable set.
+"""Benchmark runner: ablation runs A-F over FinanceBench, the India set and the unanswerable set.
 
     uv run python -m eval.run --runs E --sets financebench --limit 20        # quick check
     uv run python -m eval.run --runs A B C D E --sets financebench unanswerable
@@ -44,7 +44,8 @@ EVAL_DIR = Path(__file__).resolve().parent
 def load_set(name: str) -> list[EvalQuestion]:
     if name == "financebench":
         return load_questions()
-    raw = yaml.safe_load((EVAL_DIR / f"{'india_set' if name == 'india' else name}.yaml").read_text())
+    files = {"india": "india_set", "xbrl": "xbrl_set"}
+    raw = yaml.safe_load((EVAL_DIR / f"{files.get(name, name)}.yaml").read_text())
     out = []
     for q in raw.get("questions") or []:
         if name == "unanswerable":
@@ -101,7 +102,10 @@ def page_text(doc_id: str, page: int) -> str:
     p = _parsed(doc_id)
     if p is None:
         return ""
-    return "\n".join(e.text for e in p.elements if e.page <= page <= (e.page_end or e.page))
+    # Docling pads table cells for alignment; without compacting, the judge's page limit cuts tables off early.
+    from ingest.chunk import compact_md
+
+    return "\n".join(compact_md(e.text) for e in p.elements if e.page <= page <= (e.page_end or e.page))
 
 
 def gold_page_parsed(q: EvalQuestion) -> bool | None:
@@ -137,9 +141,14 @@ def score(pipe: Pipeline, q: EvalQuestion, judge: Judge | None, retrieval_only: 
     with pipe.llm.track() as usage:
         row.update(_run_pipeline(pipe, q, retrieval_only, t0))
     row["usage"] = dict(usage)
-    retrieved, ans, pq = row.pop("_retrieved"), row.pop("_answer"), row.pop("_pq")
+    retrieved, ans, pq, shown = row.pop("_retrieved"), row.pop("_answer"), row.pop("_pq"), row.pop("_shown")
     row["retrieved"] = [{"doc_id": c.doc_id, "page": c.page, "page_end": c.page_end, "score": c.score} for c in retrieved]
     row["recall10"] = metrics.recall_at_k(retrieved, q, 10)
+    row["shown"] = [{"doc_id": c.doc_id, "page": c.page, "page_end": c.page_end} for c in shown]
+    # An XBRL value can sit on several pages (a statement, a note, selected data), and any one of them is enough.
+    row["evidence_complete"] = (
+        metrics.recall_at_k(shown, q, len(shown)) if q.set == "xbrl" else metrics.evidence_complete(shown, q)
+    )
     row["parsed_query"] = pq.model_dump() if pq else None
     if retrieval_only or not judge:
         return row
@@ -155,7 +164,8 @@ def _run_pipeline(pipe: Pipeline, q: EvalQuestion, retrieval_only: bool, t0: flo
         retrieved = [to_citation(i, h) for i, h in enumerate(top10)]
         row["latency_s"] = round(time.perf_counter() - t0, 2)
         row["top_score"] = max((h.rerank_score or 0.0 for h in sources), default=None) if pipe.cfg.rerank else None
-        return {**row, "_retrieved": retrieved, "_answer": None, "_pq": pq}
+        shown = [to_citation(i, h) for i, h in enumerate(sources)]
+        return {**row, "_retrieved": retrieved, "_answer": None, "_pq": pq, "_shown": shown}
     ans = pipe.answer_from(q.question, pq, sources, top10)
     row.update(
         answer=ans.answer,
@@ -163,16 +173,20 @@ def _run_pipeline(pipe: Pipeline, q: EvalQuestion, retrieval_only: bool, t0: flo
         refused=ans.refused,
         latency_s=round(time.perf_counter() - t0, 2),
         stripped=ans.stripped_sentences,
+        missing=ans.missing,
+        attempts=ans.attempts,
         figures=[f.model_dump() for f in ans.figures],
         calculations=[c.model_dump() for c in ans.calculations],
         citations=[{"label": c.label, "doc_id": c.doc_id, "page": c.page} for c in ans.citations],
     )
     row["top_score"] = max((c.score or 0.0 for c in ans.retrieved), default=None) if pipe.cfg.rerank else None
-    return {**row, "_retrieved": ans.retrieved, "_answer": ans, "_pq": pq}
+    return {**row, "_retrieved": ans.retrieved, "_answer": ans, "_pq": pq, "_shown": ans.shown}
 
 
 def _judge_row(row: dict, q: EvalQuestion, ans, judge: Judge) -> dict:
-    if q.answerable and not row["refused"]:
+    if q.set == "xbrl":  # the answer key is exact, so no judge is needed
+        row["correct"] = not row["refused"] and metrics.numeric_match(ans.answer + (ans.table_markdown or ""), q)
+    elif q.answerable and not row["refused"]:
         pages = {c.label: page_text(c.doc_id, c.page) for c in ans.citations}
         candidate = ans.answer + ("\n" + ans.table_markdown if ans.table_markdown else "")
         try:
@@ -211,6 +225,9 @@ def summarize(rows: list[dict], cost_usd: float | None) -> dict:
         "numeric_n": sum(1 for r in ans if r.get("numeric_q")),
         "citation_precision": metrics.rate(cites),
         "recall_at_10": metrics.rate([r.get("recall10") for r in ans]),
+        "evidence_complete": metrics.rate([r.get("evidence_complete") for r in ans]),
+        "retried": sum(r.get("attempts", 1) > 1 for r in rows),
+        "correct_after_retry": sum(r.get("attempts", 1) > 1 and bool(r.get("correct")) for r in ans),
         "correct_refusals": metrics.rate([r.get("refused") for r in unans]) if unans and "refused" in unans[0] else None,
         "false_refusals": metrics.rate([r.get("refused") for r in ans]) if ans and "refused" in ans[0] else None,
         "median_latency_s": metrics.median([r["latency_s"] for r in rows]),
@@ -244,9 +261,9 @@ def main() -> None:
     from ingest.manifest import load_documents
 
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--runs", nargs="+", default=["E"], choices=list(RUNS))
+    ap.add_argument("--runs", nargs="+", default=["F"], choices=list(RUNS))
     ap.add_argument(
-        "--sets", nargs="+", default=["financebench", "unanswerable"], choices=["financebench", "india", "unanswerable"]
+        "--sets", nargs="+", default=["financebench", "unanswerable"], choices=["financebench", "india", "unanswerable", "xbrl"]
     )
     ap.add_argument("--limit", type=int, help="random sample of N questions per set (fixed seed)")
     ap.add_argument("--retrieval-only", action="store_true", help="recall@10 without any LLM calls")

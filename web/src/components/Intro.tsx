@@ -22,7 +22,7 @@ export function Intro({ busy, history, filings, companies, onAsk }: Props) {
         Ask anything about a company’s filings
       </h1>
       <p style={{ fontFamily: F.body, fontSize: 15, lineHeight: 1.6, color: C.muted, margin: '8px 0 18px', maxWidth: 640 }}>
-        Search {filings ? `${filings} filings from ${companies} companies` : 'indexed 10-Ks, 10-Qs and earnings calls'}, with answers cited to the page.
+        Search {filings ? `${filings} filings from ${companies} companies` : 'indexed 10-Ks, 10-Qs and earnings calls'}, with every answer cited to its source.
       </p>
 
       <AskBar busy={busy} onAsk={onAsk} />

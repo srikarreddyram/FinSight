@@ -27,6 +27,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from analyst.api import router as analyst_router
+from app import fiscal
 from app.config import get_settings
 from app.pipeline import RUNS, get_pipeline
 from app.schemas import Answer, Company, DocMeta
@@ -88,7 +89,7 @@ def documents() -> list[dict]:
     from ingest.manifest import load_documents, local_path
 
     indexed = indexed_docs()
-    return [
+    docs = [
         {
             **m.model_dump(),
             "fiscal_label": m.fiscal_label,
@@ -98,6 +99,26 @@ def documents() -> list[dict]:
         }
         for doc_id, m in sorted(load_documents().items())
     ]
+    # Every other company's latest 10-K, searched as text when the sections index is on (ingest/sections.py).
+    covered = {d["ticker"] for d in docs if d["indexed"]}
+    docs += [
+        {
+            "doc_id": f["doc_id"],
+            "ticker": t,
+            "company": f["name"],
+            "doc_type": "10-K",
+            "fiscal_year": f["fiscal_year"],
+            "fiscal_label": fiscal.label(f["fiscal_year"]),
+            "period": "FY",
+            "period_end": fiscal.period_bounds(f["fiscal_year"], "FY", f["fye_month"])[1].isoformat(),
+            "track": "sections",
+            "indexed": True,
+            "downloaded": False,
+        }
+        for t, f in sorted(get_pipeline().sections.items())
+        if t not in covered
+    ]
+    return docs
 
 
 def _pdf(doc_id: str) -> Path:

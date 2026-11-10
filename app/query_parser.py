@@ -12,6 +12,7 @@ from __future__ import annotations
 import logging
 import re
 from collections.abc import Iterable
+from dataclasses import dataclass
 
 from app import fiscal
 from app.schemas import Company, ParsedQuery
@@ -63,12 +64,23 @@ _DOC_HINTS = [
 _FORWARD = re.compile(r"\b(expect(s|ed|ing)?|guidance|outlook|forecasts?|anticipat\w+|project(s|ed|ions?))\b", re.I)
 
 
+@dataclass(frozen=True)
+class Vocab:
+    """Words filings use as ordinary words, measured by ingest.sections: lower-case words (`plain`) and all-capital
+    tokens (`caps`). A ticker in `caps` ("IT", "ARR", "COST") can't name a company bare."""
+
+    plain: frozenset[str] = frozenset()
+    caps: frozenset[str] = frozenset()
+
+
 class CompanyMatcher:
     """strict: companies whose names must be written with a capital, because there are too many of them to vet
-    one by one (the whole universe): 'Target' the company, not a target margin."""
+    one by one (the whole universe): 'Target' the company, not a target margin. Their tickers must also be
+    three letters or more and not an ordinary acronym (vocab.caps): "IT" and "ALL" are not Gartner and Allstate."""
 
-    def __init__(self, companies: Iterable[Company], strict: Iterable[str] = ()):
+    def __init__(self, companies: Iterable[Company], strict: Iterable[str] = (), vocab: Vocab | None = None):
         strict = set(strict)
+        vocab = vocab or Vocab()
         self.patterns: list[tuple[re.Pattern, str, bool]] = []
         for c in companies:
             names = {c.name, *c.aliases}
@@ -77,7 +89,8 @@ class CompanyMatcher:
                     pat = re.compile(rf"(?<![\w&]){re.escape(n)}(?![\w&])", re.I)
                     self.patterns.append((pat, c.ticker, c.ticker in strict))
             # Tickers must be written in capitals so 'FL' or 'KO' don't fire on ordinary words.
-            self.patterns.append((re.compile(rf"(?<![\w$]){re.escape(c.ticker)}(?![\w])"), c.ticker, False))
+            if c.ticker not in strict or (len(c.ticker) >= 3 and c.ticker not in vocab.caps):
+                self.patterns.append((re.compile(rf"(?<![\w$]){re.escape(c.ticker)}(?![\w])"), c.ticker, False))
 
     def find(self, text: str) -> list[str]:
         hits: list[tuple[int, str]] = []
@@ -123,10 +136,17 @@ class QueryParser:
         "sub_queries: for questions about several companies, one self-contained question per company."
     )
 
-    def __init__(self, companies: dict[str, Company], available_years: dict[str, list[int]], llm=None, strict=()):
+    def __init__(
+        self,
+        companies: dict[str, Company],
+        available_years: dict[str, list[int]],
+        llm=None,
+        strict=(),
+        vocab: Vocab | None = None,
+    ):
         self.companies = companies
         self.available = available_years
-        self.matcher = CompanyMatcher(companies.values(), strict)
+        self.matcher = CompanyMatcher(companies.values(), strict, vocab)
         self.llm = llm
 
     def _candidates(self, question: str) -> dict[str, Company]:

@@ -100,6 +100,7 @@ class Pipeline:
             years,
             llm=self.llm if self.cfg.llm_query_parser else None,
             strict=set(self.companies) - set(filed),
+            vocab=sections.vocab(),
         )
         self.collection = naive_collection(self.s) if self.cfg.naive_index else self.s.collection
         # The embedded Qdrant store isn't safe for concurrent use; LLM calls stay outside this lock.

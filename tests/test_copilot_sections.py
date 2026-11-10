@@ -95,3 +95,20 @@ def test_questions_go_to_the_collection_that_holds_the_company():
     assert p._collection(None) == "finsight" and p._collection("ZZZ") == "finsight"
     p.cfg = RUNS["A"]
     assert p._collection("NVDA") == "finsight"
+
+
+def test_universe_tickers_that_are_ordinary_words_cannot_name_a_company():
+    from app.query_parser import Vocab
+
+    companies = {t: Company(ticker=t, name=f"Name{i}x") for i, t in enumerate(["IT", "COST", "NVDA"])}
+    p = QueryParser(companies, {}, strict=set(companies), vocab=Vocab(caps=frozenset({"COST"})))
+    assert p.heuristic("IT spending and COST of sales").tickers == []
+    assert p.heuristic("How did NVDA do?").tickers == ["NVDA"]
+
+
+def test_names_that_are_ordinary_words_keep_their_suffix_unless_household():
+    plain = frozenset({"post", "news", "target"})
+    assert clean_name("Post Holdings, Inc.", plain) == "Post Holdings"
+    assert clean_name("News Corporation", plain) == "News Corporation"
+    assert clean_name("Target Corporation", plain) == "Target"
+    assert clean_name("Nvidia Corporation", plain) == "Nvidia"

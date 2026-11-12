@@ -390,6 +390,7 @@ def _render_table(table: dict, resolve) -> str | None:
 
 
 _SCALE_WORDS = r"(thousand|million|billion|trillion|crore|lakh)"
+_DOWN_WORDS = r"decreas\w+|declin\w+|fell|fall(?:ing|en)?|dropp\w+|drop|reduc\w+|loss|down"
 
 
 def _tidy_units(text: str) -> str:
@@ -398,6 +399,8 @@ def _tidy_units(text: str) -> str:
     text = re.sub(r"([$₹€£¥])\s*(-?)\s*\1", r"\2\1", text)  # "$-$1" -> "-$1", "$$1" -> "$1"
     text = re.sub(rf"\b{_SCALE_WORDS}s?\s+\1s?\b", r"\1", text)
     text = re.sub(r"(\d)x\s+(days|times)\b", r"\1 \2", text)  # a ratio the model labels itself: "42.69x days"
+    # The words already say which way: "decreased by -$601 million" -> "decreased by $601 million".
+    text = re.sub(rf"\b({_DOWN_WORDS})(\s+(?:by|of))?\s+-(?=[$₹€£¥\d])", r"\1\2 ", text, flags=re.I)
     return re.sub(r"%\s*%", "%", text)
 
 

@@ -233,3 +233,16 @@ def test_a_ratio_the_model_labels_in_days_drops_its_x():
     ]
     ans = finalize("q", _raw("It takes {calc:r} days or {calc:d} days [S1].", figs, calcs), HITS)
     assert ans.answer == "It takes 0.871 days or 317.78 days [3M FY18 p.60]."
+
+
+def test_a_minus_sign_after_a_word_for_falling_is_dropped():
+    figs = [_fig("capex18", 1577), _fig("capex17", 1373)]
+    calcs = [
+        {"name": "g", "op": "growth", "inputs": ["capex18", "capex17"], "periods": 0},
+        {"name": "c", "op": "change", "inputs": ["capex18", "capex17"], "periods": 0},
+    ]
+    raw = _raw("Capex decreased by {calc:c}, a decline of {calc:g} [S1]. The change was {calc:c} [S1].", figs, calcs)
+    ans = finalize("q", raw, HITS)
+    assert ans.answer == (
+        "Capex decreased by $204 million, a decline of 12.94% [3M FY18 p.60]. The change was -$204 million [3M FY18 p.60]."
+    )

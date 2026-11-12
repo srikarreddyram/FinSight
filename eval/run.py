@@ -44,7 +44,7 @@ EVAL_DIR = Path(__file__).resolve().parent
 def load_set(name: str) -> list[EvalQuestion]:
     if name == "financebench":
         return load_questions()
-    files = {"india": "india_set", "xbrl": "xbrl_set"}
+    files = {"india": "india_set", "xbrl": "xbrl_set", "universe": "universe_set"}
     raw = yaml.safe_load((EVAL_DIR / f"{files.get(name, name)}.yaml").read_text())
     out = []
     for q in raw.get("questions") or []:
@@ -73,6 +73,10 @@ def load_set(name: str) -> list[EvalQuestion]:
                 )
             )
     return out
+
+
+class ModelUnavailable(RuntimeError):
+    pass
 
 
 def eligible(q: EvalQuestion, indexed: set[str], tickers: set[str]) -> bool:
@@ -167,6 +171,8 @@ def _run_pipeline(pipe: Pipeline, q: EvalQuestion, retrieval_only: bool, t0: flo
         shown = [to_citation(i, h) for i, h in enumerate(sources)]
         return {**row, "_retrieved": retrieved, "_answer": None, "_pq": pq, "_shown": shown}
     ans = pipe.answer_from(q.question, pq, sources, top10)
+    if ans.error:
+        raise ModelUnavailable(ans.error)  # a provider outage says nothing about the system: score it on a later run
     row.update(
         answer=ans.answer,
         table=ans.table_markdown,
@@ -187,7 +193,7 @@ def _run_pipeline(pipe: Pipeline, q: EvalQuestion, retrieval_only: bool, t0: flo
 
 
 def _judge_row(row: dict, q: EvalQuestion, ans, judge: Judge) -> dict:
-    if q.set == "xbrl":  # the answer key is exact, so no judge is needed
+    if q.set in ("xbrl", "universe"):  # the answer key is exact, so no judge is needed
         row["correct"] = not row["refused"] and metrics.numeric_match(ans.answer + (ans.table_markdown or ""), q)
     elif q.answerable and not row["refused"]:
         pages = {c.label: c.snippet if c.chunk_type == "facts" else page_text(c.doc_id, c.page) for c in ans.citations}
@@ -266,7 +272,10 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--runs", nargs="+", default=["F"], choices=list(RUNS))
     ap.add_argument(
-        "--sets", nargs="+", default=["financebench", "unanswerable"], choices=["financebench", "india", "unanswerable", "xbrl"]
+        "--sets",
+        nargs="+",
+        default=["financebench", "unanswerable"],
+        choices=["financebench", "india", "unanswerable", "xbrl", "universe"],
     )
     ap.add_argument("--limit", type=int, help="random sample of N questions per set (fixed seed)")
     ap.add_argument(
@@ -297,7 +306,13 @@ def main() -> None:
     judge = None if args.retrieval_only else Judge(LLM(s.model_copy(update={"quota_fallback_model": None})))
     summary: dict = {
         "config": vars(args),
-        "models": {"answer": s.answer_model, "fast": s.fast_model, "judge": s.judge_model},
+        # The corpus is part of what was measured: rows from another corpus are never resumed from.
+        "models": {
+            "answer": s.answer_model,
+            "fast": s.fast_model,
+            "judge": s.judge_model,
+            "corpus": "universe" if args.universe else "parsed filings",
+        },
         "results": {},
     }
 
@@ -314,6 +329,9 @@ def main() -> None:
                 log.warning("%s. Stopping; rerun the same command later to resume.", e)
             stop.set()
             return None
+        except ModelUnavailable as e:
+            log.warning("%s left unscored (%s); rerun the same command to fill it in", q.id, e)
+            return None
 
     # Written up front (and again at the end) so a crashed run's rows can still be resumed.
     (out_dir / "summary.json").write_text(json.dumps(summary, indent=2))
@@ -324,7 +342,7 @@ def main() -> None:
                 cfg = cfg.__class__(**{**cfg.__dict__, "llm_query_parser": False})
             pipe = base.with_config(cfg)
             indexed = set(indexed_docs(naive_collection(s) if cfg.naive_index else s.collection))
-            tickers = {docs[d].ticker for d in indexed if d in docs}
+            tickers = {docs[d].ticker for d in indexed if d in docs} | set(pipe.sections)
             for set_name in args.sets:
                 qs = [q for q in load_set(set_name) if eligible(q, indexed, tickers)]
                 if args.types and set_name == "financebench":

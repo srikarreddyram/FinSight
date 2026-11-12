@@ -38,6 +38,22 @@ def _series(con: duckdb.DuckDBPyConnection, cik: int) -> tuple[np.ndarray, np.nd
     return _SERIES[key]
 
 
+_BENCHMARK: dict[tuple, tuple[np.ndarray, np.ndarray] | None] = {}
+
+
+def benchmark(con: duckdb.DuckDBPyConnection, ticker: str = "SPY") -> tuple[np.ndarray, np.ndarray] | None:
+    """(trading days, cumulative log total return) of the market, cached per connection."""
+    key = (con, ticker)
+    if key not in _BENCHMARK:
+        df = con.execute("select day, ret from prices where ticker = ? order by day", [ticker]).df()
+        if df.empty:
+            _BENCHMARK[key] = None
+        else:
+            days = np.array([d.date() if hasattr(d, "date") else d for d in df["day"]])
+            _BENCHMARK[key] = (days, np.cumsum(np.log1p(df["ret"].fillna(0.0).to_numpy())))
+    return _BENCHMARK[key]
+
+
 def compute(cum: np.ndarray, i: int) -> dict[str, float]:
     """Momentum measures at index i of a cumulative log-return series (NaN without a year of history)."""
     if i < YEAR:

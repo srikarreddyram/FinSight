@@ -194,12 +194,14 @@ def main() -> None:
         help="the PRD holds out the most recent full year (2025) for one final run; pass 2025 only for that run",
     )  # fmt: skip
     ap.add_argument("--out", type=Path, help="where to write the predictions (default: predictions.parquet beside the panel)")
+    ap.add_argument("--without", nargs="*", default=[], help="signals to leave out, by name (for ablations)")
     args = ap.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     p = pd.read_parquet(args.panel)
     for c in ("month", "target_end"):
         p[c] = pd.to_datetime(p[c]).dt.date
     features = [c for c in p.columns if c.endswith(("_rank", "_srank")) and not c.startswith("f_score_tests")]
+    features = [f for f in features if f.rsplit("_", 1)[0] not in args.without]
     preds, _ = walk_forward(p, features, args.first_test_year, last_test_year=args.last_test_year)
     preds.to_parquet(args.out or args.panel.parent / "predictions.parquet")
     with pd.option_context("display.width", 200, "display.float_format", "{:.3f}".format):

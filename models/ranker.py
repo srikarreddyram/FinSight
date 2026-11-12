@@ -88,6 +88,15 @@ def labels(df: pd.DataFrame, target: str = "excess_ret", by: str = "market") -> 
     return (below / g.transform("count") * LABELS).astype(int)
 
 
+def rank_labels(df: pd.DataFrame, target: str = "excess_ret", by: str = "market") -> pd.Series:
+    """The target's percentile within the month (or month and sector), centred on zero. Unlike the quintiles a
+    ranking objective is scored on from the top down, this treats both ends alike: a volatile stock is as often at
+    the bottom as at the top, so volatility alone earns it nothing."""
+    sector = df["sector"].fillna("Unknown") if "sector" in df else pd.Series("All", index=df.index)
+    keys = ["month"] if by == "market" else ["month", sector]
+    return df.groupby(keys)[target].rank(pct=True) - 0.5
+
+
 def feature_ics(df: pd.DataFrame, features: list[str], target: str = "excess_ret") -> pd.Series:
     """Mean monthly rank IC of each feature on these rows."""
     ranked = df.groupby("month")[[*features, target]].rank()
@@ -102,13 +111,17 @@ def select(df: pd.DataFrame, features: list[str], k: int | None) -> list[str]:
     return list(feature_ics(df, features).abs().sort_values(ascending=False).index[:k])
 
 
-def _fit_lgbm(train: pd.DataFrame, features: list[str], params: dict, by: str = "market"):
+def _fit_lgbm(train: pd.DataFrame, features: list[str], params: dict, by: str = "market", objective: str = "lambdarank"):
+    """objective: "lambdarank" on within-month quintiles, or "regression" on the within-month percentile."""
     import lightgbm as lgb
 
     train = train.sort_values("month")
-    params = {**BASE, **params}
+    params = {**BASE, **params, "objective": objective}
     rounds = params.pop("n_estimators")
-    data = lgb.Dataset(train[features], labels(train, by=by), group=train.groupby("month", sort=True).size().to_numpy())
+    if objective == "regression":
+        data = lgb.Dataset(train[features], rank_labels(train, by=by))
+    else:
+        data = lgb.Dataset(train[features], labels(train, by=by), group=train.groupby("month", sort=True).size().to_numpy())
     return lgb.train(params, data, num_boost_round=rounds)
 
 
@@ -116,7 +129,7 @@ def _ic(df: pd.DataFrame, pred: np.ndarray) -> float:
     return float(rank_ic_by_month(df.assign(pred=pred), "pred", "excess_ret").mean())
 
 
-def tune(train: pd.DataFrame, features: list[str]) -> tuple[Config, float | None]:
+def tune(train: pd.DataFrame, features: list[str], objective: str = "lambdarank") -> tuple[Config, float | None]:
     """Pick the configuration by validation IC on the last VAL_YEARS of the training window, purged."""
     val_start = date(max(m.year for m in train["month"]) - VAL_YEARS + 1, 1, 1)
     inner = train[train["target_end"] < val_start]
@@ -127,7 +140,7 @@ def tune(train: pd.DataFrame, features: list[str]) -> tuple[Config, float | None
     scores = []
     for c in CONFIGS:
         f = chosen[c.top_k]
-        scores.append(_ic(val, _fit_lgbm(inner, f, c.grid, c.target).predict(val[f])))
+        scores.append(_ic(val, _fit_lgbm(inner, f, c.grid, c.target, objective).predict(val[f])))
     best = int(np.nanargmax(scores))
     return CONFIGS[best], scores[best]
 
@@ -141,7 +154,12 @@ def ridge(train: pd.DataFrame, test: pd.DataFrame, features: list[str], alpha: f
 
 
 def walk_forward(
-    panel: pd.DataFrame, features: list[str], first_test_year: int, seed: int = 0, last_test_year: int | None = None
+    panel: pd.DataFrame,
+    features: list[str],
+    first_test_year: int,
+    seed: int = 0,
+    last_test_year: int | None = None,
+    objective: str = "lambdarank",
 ) -> tuple[pd.DataFrame, list[FoldReport]]:
     """Out-of-sample predictions for every test year, plus what each fold trained on and chose."""
     rng = np.random.default_rng(seed)
@@ -151,9 +169,9 @@ def walk_forward(
         train, test = panel.loc[fold.train], panel.loc[fold.test]
         if train["month"].nunique() < MIN_INNER_MONTHS:
             continue
-        config, val_ic = tune(train, features)
+        config, val_ic = tune(train, features, objective)
         chosen = select(train, features, config.top_k)
-        model = _fit_lgbm(train, chosen, config.grid, config.target)
+        model = _fit_lgbm(train, chosen, config.grid, config.target, objective)
         out = test[[c for c in ("month", "ticker", "sector", "tier", "excess_ret") if c in test]].copy()
         out["year"] = fold.year
         out["pred_lgbm"] = model.predict(test[chosen])
@@ -195,6 +213,10 @@ def main() -> None:
     )  # fmt: skip
     ap.add_argument("--out", type=Path, help="where to write the predictions (default: predictions.parquet beside the panel)")
     ap.add_argument("--without", nargs="*", default=[], help="signals to leave out, by name (for ablations)")
+    ap.add_argument(
+        "--objective", choices=["lambdarank", "regression"], default="lambdarank",
+        help="regression fits the within-month return percentile, which doesn't reward volatility (phase J)",
+    )  # fmt: skip
     args = ap.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     p = pd.read_parquet(args.panel)
@@ -202,7 +224,7 @@ def main() -> None:
         p[c] = pd.to_datetime(p[c]).dt.date
     features = [c for c in p.columns if c.endswith(("_rank", "_srank")) and not c.startswith("f_score_tests")]
     features = [f for f in features if f.rsplit("_", 1)[0] not in args.without]
-    preds, _ = walk_forward(p, features, args.first_test_year, last_test_year=args.last_test_year)
+    preds, _ = walk_forward(p, features, args.first_test_year, last_test_year=args.last_test_year, objective=args.objective)
     preds.to_parquet(args.out or args.panel.parent / "predictions.parquet")
     with pd.option_context("display.width", 200, "display.float_format", "{:.3f}".format):
         print(ic_table(preds))

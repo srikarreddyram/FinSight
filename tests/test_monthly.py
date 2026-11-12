@@ -100,3 +100,17 @@ def test_monthly_t_counts_months_as_observations():
     mean, t, n = monthly_t(ic)
     assert mean == pytest.approx(0.03) and n == 4
     assert t == pytest.approx(0.03 / ic.std(ddof=1) * 2)
+
+
+def test_rank_labels_are_symmetric_so_volatility_alone_earns_nothing():
+    from models.ranker import labels, rank_labels
+
+    rng = np.random.default_rng(1)
+    vol = np.repeat([0.01, 0.10], 500)  # calm and wild stocks with the same mean return
+    df = pd.DataFrame({"month": date(2024, 1, 31), "excess_ret": rng.normal(0, vol), "vol": vol})
+    r = rank_labels(df)
+    assert r.min() > -0.5 and r.max() == pytest.approx(0.5)
+    assert abs(r[df["vol"] == 0.10].mean()) < 0.03  # no reward for being wild
+    # the ranking objective's top bucket, by contrast, is mostly wild stocks
+    top = labels(df) == 4
+    assert (df.loc[top, "vol"] == 0.10).mean() > 0.8

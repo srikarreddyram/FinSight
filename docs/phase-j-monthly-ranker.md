@@ -71,7 +71,15 @@ a flat 10 bps a trade, which understates small-cap trading costs.
 
 ## Revision log
 
-*(Each change made while looking at the development years, with the reason. Empty at the first commit.)*
+**Revision 1 (12 November 2026): a symmetric objective.** The first development run gave the LightGBM ranker a
+rank IC of −0.014 (t −1.1), and a rank correlation of +0.51 between its scores and past-year volatility. The cause
+is the objective, not the data: LambdaRank is scored from the top of each month's ranking down, and a volatile
+stock is in the top return quintile more often than a calm one simply because it moves more (it is in the bottom
+quintile more often too, which the objective cares less about). So the model learns to put volatile stocks first.
+The 12-month ranker shows the same lean (+0.24). The revision fits the same trees to each stock's return
+*percentile* within the month with a squared-error objective (`--objective regression`), which treats both ends of
+the ranking alike. Everything else in the protocol is unchanged, including the bar. No signal was added, dropped
+or re-signed.
 
 ## Results
 

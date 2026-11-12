@@ -103,6 +103,7 @@ def _pipeline(llm: FakeLLM, found: list[Hit] = (), run: str = "F") -> Pipeline:
     p.cfg, p.s, p.llm = RUNS[run], get_settings(), llm
     p.retriever, p.reranker = FakeRetriever(list(found)), FakeReranker()
     p.companies, p.parser, p.collection = {}, None, "c"
+    p.sections, p.pdf_tickers, p.tenk_docs = {}, set(), {}
     p._retrieve_lock = threading.Lock()
     return p
 

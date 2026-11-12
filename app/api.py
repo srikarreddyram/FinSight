@@ -159,7 +159,6 @@ def ingest(
 ) -> dict:
     """Upload a filing and make it queryable. The pdfplumber parser indexes in well under a minute;
     choose docling for better tables at the cost of a few minutes."""
-    from app.pipeline import available_years
     from ingest.index import ingest_doc
     from ingest.manifest import load_companies, upsert
 
@@ -186,7 +185,5 @@ def ingest(
     with _ingest_lock:
         upsert(s.data_dir / "manifest.uploads.yaml", [co], [meta])
         report = ingest_doc(meta, dest, parser=parser, force=True)
-        pipe = get_pipeline()
-        pipe.companies = load_companies()
-        pipe.parser.__init__(pipe.companies, available_years(), llm=pipe.parser.llm)
+        get_pipeline().reload()
     return report

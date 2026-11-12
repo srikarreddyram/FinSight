@@ -1,8 +1,8 @@
 """Standard financials from the warehouse's XBRL facts, as a source the Copilot can quote.
 
-For each company the question names, one source lists the standard line items its 10-K reported for the latest
-fiscal year asked about, and the years before it for averages and growth. They are read point-in-time on the day
-after that 10-K was filed, so a later restatement can't replace a printed figure. Values are in $ millions, as
+For each company the question names, one source lists the standard line items for the latest fiscal year asked
+about (or, with no year in the question, its latest 10-K's), and the years before it for averages and growth.
+They are read point-in-time on the day after that 10-K was filed, so a later restatement can't replace a figure. Values are in $ millions, as
 most statements print them, so the model copies a figure like any table's and Python verifies it the same way.
 """
 
@@ -99,7 +99,7 @@ def table(con: duckdb.DuckDBPyConnection, company: Company, cik: int, year: int,
         return None
     head = " | ".join(f"FY{fiscal_year(e, fye)} ({e:%b} {e.day}, {e.year})" for e in ends)
     return (
-        f"{company.name} ({company.ticker}) standard financials from the XBRL data of its FY{year} 10-K, "
+        f"{company.name} ({company.ticker}) standard financials from its XBRL filings, as of the FY{year} 10-K "
         f"filed {when:%b} {when.day}, {when.year}; $ millions\n"
         f"| Line item | {head} |\n|---|{'---|' * len(ends)}\n" + "\n".join(rows)
     )
@@ -112,7 +112,8 @@ def sources(
     tenk_docs: dict[tuple[str, int], str],
     con: duckdb.DuckDBPyConnection | None = None,
 ) -> list[Hit]:
-    """One facts source per company the question names, for the latest fiscal year it asks about.
+    """One facts source per company the question names, for the latest fiscal year it asks about, or with no
+    year in the question, the latest 10-K indexed for it.
     tenk_docs: (ticker, fiscal year) -> doc_id of the indexed 10-K, so the citation names the filing."""
     if pq is None or not pq.tickers or _QUARTERLY.search(question):
         return []
@@ -124,14 +125,17 @@ def sources(
         return []
     try:
         ciks = dict(con.execute("select ticker, cik from companies where ticker is not null").fetchall())
+        explicit = fiscal.explicit_years(question)
         out = []
         for t in pq.tickers:
             # The parser resolves years against filings with text; facts go back further than the text does.
-            years, co = pq.fiscal_years.get(t) or fiscal.explicit_years(question), companies.get(t)
+            held = [y for tk, y in tenk_docs if tk == t]
+            years, co = pq.fiscal_years.get(t) or explicit or ([max(held)] if held else []), companies.get(t)
             if not years or co is None or t not in ciks:
                 continue
             year = max(years)
-            text = table(con, co, ciks[t], year, min(MAX_YEARS, max(3, year - min(years) + 1)))
+            first = min([*years, *(y for y in explicit if y <= year)])
+            text = table(con, co, ciks[t], year, min(MAX_YEARS, max(3, year - first + 1)))
             if text is None:
                 continue
             end = fiscal.period_bounds(year, "FY", co.fiscal_year_end_month)[1]

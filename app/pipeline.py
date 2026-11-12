@@ -1,8 +1,9 @@
 """Query path: parse -> filter -> hybrid search -> rerank -> evidence gate -> answer, then one retry
 that looks further if the model can't answer.
 
-The ablation runs A-F are just PipelineConfig presets, so the benchmark exercises exactly the code
-the API serves.
+The ablation runs A-G are just PipelineConfig presets, so the benchmark exercises exactly the code
+the API serves. The one difference is the corpus: the benchmarks answer from the parsed filings alone
+(Settings.sections off), the API also from every other company's latest 10-K.
 """
 
 from __future__ import annotations
@@ -14,7 +15,7 @@ import threading
 import time
 from dataclasses import dataclass
 
-from app.answer import SCHEMA, SYSTEM, build_prompt, finalize, refusal, retry_feedback, to_citation
+from app.answer import SCHEMA, SYSTEM, build_prompt, finalize, refusal, retry_feedback, to_citation, which_company
 from app.concepts import expand
 from app.config import Settings, get_settings
 from app.llm import LLM, LLMError, QuotaExhausted, get_llm
@@ -79,32 +80,41 @@ def available_years() -> dict[str, list[int]]:
 
 class Pipeline:
     def __init__(self, config: PipelineConfig | None = None, settings: Settings | None = None, llm: LLM | None = None):
-        from ingest import sections
-        from ingest.manifest import load_companies
 
         self.cfg = config or RUNS["F"]
         self.s = settings or get_settings()
         self.llm = llm or get_llm()
         self.retriever = Retriever(self.s)
         self.reranker = Reranker(blend=self.s.rerank_blend, table_slots=self.s.table_slots)
-        filed = load_companies()
-        years = available_years()
-        self.pdf_tickers = set(years)
-        # The warehouse's 10-K sections cover every other company, but only on the Qdrant server.
-        self.sections = sections.indexed() if self.s.qdrant_url else {}
-        self.companies: dict[str, Company] = {**sections.companies(), **filed} if self.sections else filed
-        years = {**{t: [f["fiscal_year"]] for t, f in self.sections.items()}, **years}
-        self.tenk_docs = tenk_docs()
-        self.parser = QueryParser(
-            self.companies,
-            years,
-            llm=self.llm if self.cfg.llm_query_parser else None,
-            strict=set(self.companies) - set(filed),
-            vocab=sections.vocab(),
-        )
         self.collection = naive_collection(self.s) if self.cfg.naive_index else self.s.collection
         # The embedded Qdrant store isn't safe for concurrent use; LLM calls stay outside this lock.
         self._retrieve_lock = threading.Lock()
+        self.reload()
+
+    def reload(self) -> None:
+        """(Re)read what is indexed: the parsed filings (FinanceBench, EDGAR, uploads) and, on the Qdrant server,
+        the latest 10-K sections of every other company (ingest/sections.py)."""
+        from ingest import sections
+        from ingest.manifest import load_companies
+
+        filed = load_companies()
+        years = available_years()
+        self.tenk_docs = tenk_docs()
+        self.pdf_tickers = set(years)
+        vocab = sections.vocab()
+        universe = sections.indexed() if self.s.qdrant_url and self.s.sections and vocab else {}
+        # A company already filed under another ticker keeps that entry: Block's filings are under SQ, now XYZ.
+        taken = {n.lower() for c in filed.values() for n in (c.name, *c.aliases)}
+        self.sections = {t: f for t, f in universe.items() if t in filed or f["name"].lower() not in taken}
+        others = {t: c for t, c in sections.companies().items() if t in self.sections and t not in filed}
+        self.companies: dict[str, Company] = {**others, **filed}
+        for t, f in self.sections.items():
+            years[t] = sorted({*years.get(t, []), f["fiscal_year"]})
+        # Each company's 10-Ks: where a question with no year looks, and what a facts source cites.
+        self.annual_docs = {**{(t, f["fiscal_year"]): f["doc_id"] for t, f in self.sections.items()}, **self.tenk_docs}
+        self.parser = QueryParser(
+            self.companies, years, llm=self.llm if self.cfg.llm_query_parser else None, strict=set(others), vocab=vocab
+        )
 
     def with_config(self, cfg: PipelineConfig) -> Pipeline:
         """Same models and clients, different ablation settings."""
@@ -118,15 +128,22 @@ class Pipeline:
 
     # ---------------------------------------------------------------- retrieval
 
-    def _collection(self, ticker: str | None) -> str:
-        """FinanceBench and EDGAR filings are in the main collection; every other company's 10-K sections in theirs."""
-        if not self.cfg.naive_index and ticker and ticker not in self.pdf_tickers and ticker in self.sections:
-            return self.s.sections_collection
-        return self.collection
+    def _collections(self, ticker: str | None) -> list[str]:
+        """Parsed filings are in the main collection and every company's latest 10-K sections in their own. A
+        company with both is searched in both, unless that 10-K is itself among the parsed filings: the year
+        filter and the reranker choose between an old filing's pages and the latest one's text."""
+        if self.cfg.naive_index or ticker not in self.sections:
+            return [self.collection]
+        if ticker not in self.pdf_tickers:
+            return [self.s.sections_collection]
+        if (ticker, self.sections[ticker]["fiscal_year"]) in self.tenk_docs:
+            return [self.collection]
+        return [self.collection, self.s.sections_collection]
 
     def _search(self, query: str, pq: ParsedQuery | None, ticker: str | None = None, k: int | None = None) -> list[Hit]:
         one = ticker or (pq.tickers[0] if pq is not None and len(pq.tickers) == 1 else None)
-        kw = dict(collection=self._collection(one), hybrid=self.cfg.hybrid, k=k)
+        collections = self._collections(one)
+        kw = dict(hybrid=self.cfg.hybrid, k=k)
         sections = list(pq.sections) if pq is not None else []
         if self.cfg.expand_concepts:
             query, from_statements = expand(query)
@@ -134,11 +151,23 @@ class Pipeline:
                 sections.append("Financial Statements")
         if pq is not None or sections:
             kw.update(boost_sections=sections or None, boost_doc_types=(pq.doc_types if pq else None) or None)
-        hits = self.retriever.search(query, qfilter=build_filter(pq, ticker), **kw)
+
+        def search(parsed: ParsedQuery | None) -> list[Hit]:
+            found = [
+                h
+                for c in collections
+                for h in self.retriever.search(query, qfilter=build_filter(parsed, ticker), collection=c, **kw)
+            ]
+            return (
+                sorted(found, key=lambda h: h.rrf_score, reverse=True)[: k or self.s.retrieve_k]
+                if len(collections) > 1
+                else found
+            )
+
+        hits = search(pq)
         if not hits and pq is not None:
             # The year filter can over-constrain (e.g. no filing for that year); fall back to company only.
-            relaxed = pq.model_copy(update={"fiscal_years": {}})
-            hits = self.retriever.search(query, qfilter=build_filter(relaxed, ticker), **kw)
+            hits = search(pq.model_copy(update={"fiscal_years": {}}))
         return hits
 
     def _rank(self, query: str, hits: list[Hit], k: int) -> list[Hit]:
@@ -157,9 +186,11 @@ class Pipeline:
             return []
         from app.facts import sources
 
-        return sources(pq, question, self.companies, self.tenk_docs)
+        return sources(pq, question, self.companies, self.annual_docs)
 
     def _retrieve(self, question: str, pq: ParsedQuery | None) -> tuple[ParsedQuery | None, list[Hit], list[Hit]]:
+        if pq is not None and not pq.tickers:
+            return pq, [], []  # no company named: answer_from asks which one
         k = self.cfg.rerank_k or self.s.rerank_k
         facts = self._facts(question, pq)
         if pq is not None and pq.is_comparison and pq.sub_queries:
@@ -247,6 +278,8 @@ class Pipeline:
         """Answer from the sources. If that fails and the pipeline retries, look further and try once more: the
         model refuses mostly when evidence is missing (6 of 103 FinanceBench questions with every gold page shown,
         24 of 47 without), and Python's rejections tell it what to fix. The second attempt passes the same checks."""
+        if pq is not None and not pq.tickers:
+            return which_company(question, pq)
         ans = self._attempt(question, pq, sources)
         read = sources
         if self.cfg.retry and ans.refused and not ans.error:

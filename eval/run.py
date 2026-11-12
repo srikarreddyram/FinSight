@@ -279,6 +279,9 @@ def main() -> None:
     ap.add_argument("--workers", type=int, default=2)
     ap.add_argument("--no-llm-parser", action="store_true", help="heuristic query parsing only")
     ap.add_argument("--fresh", action="store_true", help="re-score everything instead of resuming earlier rows")
+    ap.add_argument(
+        "--universe", action="store_true", help="also search every company's latest 10-K (default: the parsed filings only)"
+    )
     args = ap.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     logging.getLogger("httpx").setLevel(logging.WARNING)
@@ -289,7 +292,8 @@ def main() -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     # No quota fallback in benchmarks: every answer must come from the configured model; runs resume instead.
     system_llm = LLM(s.model_copy(update={"quota_fallback_model": None}))
-    base = Pipeline(llm=system_llm)
+    # The benchmarks' gold answers come from the parsed filings, so that is the corpus unless asked otherwise.
+    base = Pipeline(llm=system_llm, settings=s.model_copy(update={"sections": args.universe}))
     judge = None if args.retrieval_only else Judge(LLM(s.model_copy(update={"quota_fallback_model": None})))
     summary: dict = {
         "config": vars(args),

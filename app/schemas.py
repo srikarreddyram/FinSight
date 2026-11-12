@@ -145,6 +145,7 @@ class Answer(BaseModel):
     question: str
     answer: str
     refused: bool = False
+    clarify: bool = False  # the question names no company: the answer asks which one
     error: str | None = None  # the model couldn't be reached or failed; distinct from "not found"
     citations: list[Citation] = Field(default_factory=list)
     figures: list[Figure] = Field(default_factory=list)

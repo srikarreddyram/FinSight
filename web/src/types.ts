@@ -46,6 +46,7 @@ export interface Answer {
   question: string
   answer: string
   refused: boolean
+  clarify?: boolean
   error: string | null
   citations: Citation[]
   figures: Figure[]

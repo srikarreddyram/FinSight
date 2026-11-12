@@ -425,6 +425,14 @@ def refusal(
     )
 
 
+WHICH_COMPANY = "Which company is this about? Name it, or give its ticker with a dollar sign ($NVDA)."
+
+
+def which_company(question: str, pq: ParsedQuery | None = None) -> Answer:
+    """With some 1,600 companies indexed, a question that names none has no filings to search."""
+    return Answer(question=question, answer=WHICH_COMPANY, refused=True, clarify=True, parsed_query=pq)
+
+
 def numbers_supported(text: str, sources: str) -> bool:
     """Helper for eval: are all non-year numbers in `text` present in `sources`?"""
     return all(appears_in(v, sources) for v in numbers_in(text) if not _YEARISH.match(str(int(v))))

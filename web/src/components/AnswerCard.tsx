@@ -100,6 +100,14 @@ function Legend({ color, text }: { color: string; text: string }) {
 
 /** A refusal is a feature: say so plainly and show the evidence that fell short. */
 function Refusal({ answer, selected, onCite }: Props) {
+  if (answer.clarify) {
+    return (
+      <Card accent={C.accent} className="anim-fade-up" style={{ padding: '18px 20px' }}>
+        <SectionLabel color={C.accent}>Which company?</SectionLabel>
+        <p style={{ fontFamily: F.body, fontSize: 14, color: C.dim, marginTop: 8, lineHeight: 1.6 }}>{answer.answer}</p>
+      </Card>
+    )
+  }
   const note = answer.answer.replace(NOT_FOUND, '').replace('The closest passages are listed below.', '').trim()
   return (
     <Card accent={C.warn} className="anim-fade-up" style={{ padding: '18px 20px' }}>

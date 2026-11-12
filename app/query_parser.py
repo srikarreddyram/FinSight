@@ -73,33 +73,73 @@ class Vocab:
     caps: frozenset[str] = frozenset()
 
 
+_NAME_NOISE = {
+    "inc", "incorporated", "corp", "corporation", "company", "ltd", "limited", "plc", "holdings", "holding", "group",
+    "the", "and", "for", "international", "financial", "energy", "technologies", "services", "systems", "industries",
+    "american", "national", "first", "general", "global", "resources", "bank", "bancorp", "trust", "partners",
+}  # fmt: skip
+_PERIOD = re.compile(r"^(Q[1-4]|H[12]|FY\d*)$", re.I)  # "Q2" is Q2 Holdings' name and everyone's second quarter
+
+
 class CompanyMatcher:
-    """strict: companies whose names must be written with a capital, because there are too many of them to vet
-    one by one (the whole universe): 'Target' the company, not a target margin. Their tickers must also be
-    three letters or more and not an ordinary acronym (vocab.caps): "IT" and "ALL" are not Gartner and Allstate."""
+    """Finds the companies a question names.
+
+    The parsed filings' few dozen companies are vetted by hand and match loosely: a name or alias in any
+    capitalisation, the ticker in capitals. The ~1,600 others (`strict`) are too many to vet, so they match
+    conservatively:
+    - a name of several words in any capitalisation, but a one-word name only with a capital first letter
+      ("Target", not a "target margin"), and a short one or an acronym that is also a word only as written
+      ("NOW", not "Now");
+    - a ticker bare only if it has three letters or more and filings don't use it as a word or an acronym
+      ("NVDA"; not "K" as in 10-K, "COST" or "ARR"). Any ticker matches after a dollar sign.
+    A name inside a longer one belongs to the longer: "Fox" in "Fox Factory", "Block" in "H&R Block"."""
 
     def __init__(self, companies: Iterable[Company], strict: Iterable[str] = (), vocab: Vocab | None = None):
         strict = set(strict)
-        vocab = vocab or Vocab()
-        self.patterns: list[tuple[re.Pattern, str, bool]] = []
+        self.vocab = vocab = vocab or Vocab()
+        self.patterns: list[tuple[re.Pattern, str, str, str]] = []  # pattern, ticker, rule, the name as listed
         for c in companies:
-            names = {c.name, *c.aliases}
-            for n in sorted(names, key=len, reverse=True):
-                if len(n) >= 3 or not n.isalpha():
-                    pat = re.compile(rf"(?<![\w&]){re.escape(n)}(?![\w&])", re.I)
-                    self.patterns.append((pat, c.ticker, c.ticker in strict))
+            t, careful = c.ticker, c.ticker in strict
+            for n in sorted({c.name, *c.aliases}, key=len, reverse=True):
+                one_word = not re.search(r"\s", n)
+                if _PERIOD.match(n) or (careful and one_word and n in vocab.caps):
+                    continue
+                if not careful:
+                    if len(n) < 3 and n.isalpha():
+                        continue
+                    rule = "any"
+                elif not one_word:
+                    rule = "any"
+                elif len(n) <= 3 or (n.isupper() and n.lower() in vocab.plain):
+                    rule = "exact"
+                else:
+                    rule = "capital"
+                self.patterns.append((re.compile(rf"(?<![\w&]){re.escape(n)}(?![\w&])", re.I), t, rule, n))
+            self.patterns.append((re.compile(rf"\${re.escape(t)}(?!\w)"), t, "any", t))
             # Tickers must be written in capitals so 'FL' or 'KO' don't fire on ordinary words.
-            if c.ticker not in strict or (len(c.ticker) >= 3 and c.ticker not in vocab.caps):
-                self.patterns.append((re.compile(rf"(?<![\w$]){re.escape(c.ticker)}(?![\w])"), c.ticker, False))
+            if not careful or (len(t) >= 3 and t not in vocab.caps and t.lower() not in vocab.plain):
+                self.patterns.append((re.compile(rf"(?<![\w$]){re.escape(t)}(?![\w])"), t, "any", t))
 
-    def find(self, text: str) -> list[str]:
-        hits: list[tuple[int, str]] = []
-        for pat, ticker, strict in self.patterns:
-            m = next((m for m in pat.finditer(text) if not (strict and m.group(0)[0].islower())), None)
-            if m:
-                hits.append((m.start(), ticker))
+    def find(self, text: str, loose: bool = False) -> list[str]:
+        """loose: also accept a one-word name typed in lower case ("nvidia"), unless filings use it as an ordinary
+        word ("target"). For when nothing matched and there is no model to ask."""
+        spans: list[tuple[int, int, str]] = []
+        for pat, ticker, rule, name in self.patterns:
+            for m in pat.finditer(text):
+                found = m.group(0)
+                if rule == "exact" and found != name:
+                    continue
+                lower_case = rule == "capital" and found[0].islower() and found != name
+                if lower_case and (not loose or name.lower() in self.vocab.plain):
+                    continue
+                spans.append((m.start(), m.end(), ticker))
+        kept = [
+            s
+            for s in spans
+            if not any(o[2] != s[2] and o[0] <= s[0] and s[1] <= o[1] and o[1] - o[0] > s[1] - s[0] for o in spans)
+        ]
         out: list[str] = []
-        for _, t in sorted(hits):
+        for _, _, t in sorted(kept):
             if t not in out:
                 out.append(t)
         return out
@@ -148,18 +188,23 @@ class QueryParser:
         self.available = available_years
         self.matcher = CompanyMatcher(companies.values(), strict, vocab)
         self.llm = llm
+        self._words: dict[str, set[str]] = {}
 
     def _candidates(self, question: str) -> dict[str, Company]:
         """The companies the LLM may pick from: all of a small corpus, but with the whole universe indexed only
         those sharing a word with the question, so the prompt stays small."""
         if len(self.companies) <= 100:
             return self.companies
-        words = set(re.findall(r"[a-z0-9&]{4,}", question.lower()))
-        return {
-            t: c
-            for t, c in self.companies.items()
-            if words & set(re.findall(r"[a-z0-9&]{4,}", " ".join([c.name, *c.aliases]).lower()))
-        }
+        words = set(re.findall(r"[a-z0-9&]+", question.lower()))
+        return {t: c for t, c in self.companies.items() if t.lower() in words or self._name_words(t) & words}
+
+    def _name_words(self, ticker: str) -> set[str]:
+        """The words of a company's names that could point to it: three letters or more, legal suffixes aside."""
+        if ticker not in self._words:
+            c = self.companies[ticker]
+            words = set(re.findall(r"[a-z0-9&]{3,}", " ".join([c.name, *c.aliases]).lower()))
+            self._words[ticker] = words - _NAME_NOISE
+        return self._words[ticker]
 
     def _schema(self, tickers: Iterable[str]) -> dict:
         return {
@@ -206,8 +251,8 @@ class QueryParser:
             "additionalProperties": False,
         }
 
-    def heuristic(self, question: str) -> ParsedQuery:
-        tickers = self.matcher.find(question)
+    def heuristic(self, question: str, loose: bool = False) -> ParsedQuery:
+        tickers = self.matcher.find(question, loose)
         years = fiscal.explicit_years(question)
         sections = [s for pat, secs in _SECTION_HINTS if pat.search(question) for s in secs]
         doc_types = [d for pat, ds in _DOC_HINTS if pat.search(question) for d in ds]
@@ -262,11 +307,11 @@ class QueryParser:
         # A name in the question settles the company, and the regex pass handles years, sections and comparisons.
         # On FinanceBench it retrieved as well as the LLM parser, for no call (all gold pages in the top 8: 71.3% vs
         # 68.7%), so the LLM only runs when the question names no company outright.
-        if self.llm is None or pq.tickers:
+        if pq.tickers:
             return pq
-        candidates = self._candidates(question)
+        candidates = self._candidates(question) if self.llm is not None else {}
         if not candidates:
-            return pq
+            return self.heuristic(question, loose=True)
         try:
             out = self.llm.json(
                 system=self.SYSTEM,
@@ -277,7 +322,7 @@ class QueryParser:
             )
         except Exception as e:  # noqa: BLE001 - the heuristic parse is a complete fallback
             log.warning("LLM query parse failed, using heuristics: %s", e)
-            return pq
+            return self.heuristic(question, loose=True)
         # Small models name companies that were never mentioned (Gemma filtered two company-less FinanceBench
         # questions to Adobe, the first ticker in the list). So the model must quote the words that refer to the
         # company, Python checks they are in the question, and only companies with indexed filings count.

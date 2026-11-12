@@ -45,7 +45,7 @@ def test_52_53_week_years_belong_to_the_year_they_nearly_end():
 
 def test_the_table_shows_figures_as_that_10k_printed_them():
     text = table(_warehouse(), MMM, CIK, 2018)
-    assert text.startswith("3M (MMM) standard financials from the XBRL data of its FY2018 10-K, filed Feb 7, 2019")
+    assert text.startswith("3M (MMM) standard financials from its XBRL filings, as of the FY2018 10-K filed Feb 7, 2019")
     assert "| Line item | FY2018 (Dec 31, 2018) | FY2017 (Dec 31, 2017) |" in text
     assert "| Total revenue / net sales | 32,765 | 31,657 |" in text  # not the later restatement
     assert "| Purchases of property, plant and equipment (capex) | 1,577 | – |" in text
@@ -60,6 +60,9 @@ def test_sources_cover_named_companies_and_skip_quarterly_questions():
     assert hit.chunk.chunk_type == "facts" and hit.chunk.doc_id == "3M_2018_10K"
     assert sources(pq, "What was 3M's Q2 FY2018 capex?", {"MMM": MMM}, {}, _warehouse()) == []
     assert sources(ParsedQuery(question="q", tickers=["MMM"]), "capex?", {"MMM": MMM}, {}, _warehouse()) == []
+    # with no year in the question, the latest 10-K held for the company
+    [latest] = sources(ParsedQuery(question="q", tickers=["MMM"]), "capex?", {"MMM": MMM}, {("MMM", 2018): "d"}, _warehouse())
+    assert latest.chunk.fiscal_year == 2018
 
     # a figure copied from the facts verifies like any table's, and cites the XBRL data
     raw = {

@@ -359,7 +359,7 @@ def main() -> None:
                 log.info(
                     "run %s / %s: %d questions (%d already scored, %d to go)", run, set_name, len(qs), len(reused), len(todo)
                 )
-                calls0, cost0 = system_llm.calls(), system_llm.cost_usd()
+                cost0 = system_llm.cost_usd()
                 for r in reused:
                     f.write(json.dumps(r, ensure_ascii=False) + "\n")
                 new = []

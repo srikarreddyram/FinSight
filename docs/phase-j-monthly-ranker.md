@@ -83,4 +83,85 @@ or re-signed.
 
 ## Results
 
-*(Added after the runs.)*
+**No edge at one month either, and the confirmatory test was not run.** The design needed a development IC with
+t > 2 before its out-of-sample months would be scored. Nothing came close, so the 20 months from January 2025
+stay unseen for a design that earns them.
+
+### The panel
+
+194,357 stock-months, 83.8% with a one-month return up to December 2024 (the rest are companies with no price
+history). The new signals cover 81% (earnings reaction) and 83% (the low-risk three) of them.
+
+### Single signals
+
+Rank IC against next month's excess return, feature months 2011–2024 (168 months), t-statistic on monthly ICs
+(`signals_1m.csv`):
+
+| Signal | Rank IC | t | Sector-neutral IC | t |
+|---|---|---|---|---|
+| Leverage | +0.016 | 2.2 | +0.011 | 2.3 |
+| Leverage change | +0.011 | 2.1 | +0.008 | 2.0 |
+| Net margin change | −0.012 | −1.9 | −0.006 | −1.2 |
+| Past month's return (reversal) | −0.017 | −1.5 | −0.009 | −1.0 |
+| **Idiosyncratic volatility, 1 month** | −0.016 | −1.3 | −0.016 | −1.6 |
+| **Volatility, 1 year** | −0.018 | −1.0 | −0.017 | −1.2 |
+| **Earnings reaction** | +0.003 | 0.6 | +0.004 | 1.0 |
+| 12-1 momentum | +0.006 | 0.4 | +0.009 | 0.8 |
+| **Beta, 1 year** | −0.007 | −0.3 | −0.007 | −0.5 |
+
+The new signals (bold) have the signs the literature expects, and none is distinguishable from zero. Two of 38
+signals clear |t| = 2, which is what chance gives at the 5% level. Leverage and its change are the same two that
+stood out at 12 months in large caps.
+
+### The ranker
+
+Test years 2015–2024, 120 months, about 118,800 stock-months (`monthly.json`, `monthly_old.json`,
+`monthly_reg.json`):
+
+| Mean monthly rank IC (t) | LambdaRank, 38 signals | LambdaRank, the old 34 | Revision 1: symmetric objective |
+|---|---|---|---|
+| LightGBM, all three indexes | −0.014 (−1.1) | −0.011 (−1.0) | **−0.001 (−0.1)** |
+| after removing size, volatility, momentum, beta | −0.003 (−0.7) | +0.001 (0.3) | +0.000 (0.0) |
+| inside S&P 500 / 400 / 600 | −0.015 / +0.001 / −0.012 | −0.011 / +0.004 / −0.010 | −0.012 / −0.006 / +0.006 |
+| Ridge baseline | +0.008 (0.7) | +0.012 (1.3) | +0.008 (0.7) |
+| Rank correlation of scores with past-year volatility | +0.51 | +0.35 | −0.18 |
+| Long-short deciles, after 10 bps | +2.6% a year (Sharpe 0.23) | +1.0% (0.14) | −2.4% (−0.12) |
+| of which 2020 | +74% | +75% | −3% |
+| Monthly turnover (both legs) | 162% | 157% | 198% |
+
+- **The ranker has no edge at this horizon.** With the symmetric objective the IC is −0.001 with a standard error
+  of 0.011: an IC above about +0.016 can be ruled out at the 5% level. The ridge baseline is the best of the lot
+  at +0.008, and its 5% upper bound is +0.024.
+- **The new signal families did not help.** With them the LambdaRank IC is −0.014; without, −0.011.
+- **Revision 1 did what it was meant to and no more.** The lean towards volatile stocks went from +0.51 to −0.18.
+  That removed the negative IC, and with it the profit of 2020.
+- **The earlier backtests' one good year was the objective.** Every backtest so far has made its whole return in
+  2020 (+59% at 12 months, +74% here). That was the volatile stocks the LambdaRank model favoured rebounding
+  after March 2020. Under the symmetric objective 2020 returns −3% and the strategy loses money after costs.
+- **Turnover is the other half.** A monthly signal turns the whole book over about twice a month. At 10 bps a
+  trade that costs 2.3 points a year, more than any gross return here.
+
+### What this means for the 12-month ranker
+
+The watchlist's ranker uses the same LambdaRank objective and shows the same lean (+0.24), which is why its top
+names are often loss-makers with Severe risk grades ([phase-d-universe.md](phase-d-universe.md)). Refitting it
+with the symmetric objective would remove that. It is not done here: it changes every 12-month figure already
+reported, and the 2025 holdout for that design has been used.
+
+### What the protocol got wrong
+
+The power estimate assumed monthly ICs vary less than they do. Their standard deviation is 0.12, so 20 months
+measure an IC to ±0.026, not ±0.02: the confirmatory test would have been weaker than stated. It makes no
+difference to the outcome, since the development bar was not met.
+
+## Reproduce
+
+    uv run python -m models.monthly build
+    uv run python -m models.monthly signals
+    uv run python -m models.ranker --panel data/study/sp1500/panel_1m.parquet --out data/study/sp1500/predictions_1m.parquet
+    uv run python -m models.ranker --panel data/study/sp1500/panel_1m.parquet --out data/study/sp1500/predictions_1m_reg.parquet --objective regression
+    uv run python -m models.monthly report --predictions data/study/sp1500/predictions_1m_reg.parquet
+
+`tests/test_monthly.py` checks the earnings reaction and low-risk measures by hand, that the target skips the
+first trading day, that only December is purged from a one-month fold, and that the symmetric labels give a
+volatile stock no advantage where the ranking labels' top bucket is 80% volatile stocks.

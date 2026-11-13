@@ -246,3 +246,12 @@ def test_a_minus_sign_after_a_word_for_falling_is_dropped():
     assert ans.answer == (
         "Capex decreased by $204 million, a decline of 12.94% [3M FY18 p.60]. The change was -$204 million [3M FY18 p.60]."
     )
+
+
+def test_a_placeholder_with_spaces_in_its_name_is_filled_or_its_sentence_removed():
+    calcs = [{"name": "capex growth FY2018", "op": "growth", "inputs": ["capex17", "capex18"], "periods": 0}]
+    figs = [_fig("capex18", 1577), _fig("capex17", 1373)]
+    ans = finalize("q", _raw("Capex grew {calc:capex growth FY2018} [S1].", figs, calcs), HITS)
+    assert ans.answer == "Capex grew 14.86% [3M FY18 p.60]."
+    ans = finalize("q", _raw("Capex grew {calc: no such thing} [S1]. Spending went to new capacity [S2].", figs), HITS)
+    assert "{" not in ans.answer and ans.answer == "Spending went to new capacity [3M FY18 p.47]."

@@ -299,8 +299,9 @@ def main() -> None:
     docs = load_documents()
     out_dir = EVAL_DIR / "results" / datetime.now().strftime("%Y%m%d-%H%M%S")
     out_dir.mkdir(parents=True, exist_ok=True)
-    # No quota fallback in benchmarks: every answer must come from the configured model; runs resume instead.
-    system_llm = LLM(s.model_copy(update={"quota_fallback_model": None}))
+    # No fallback model in benchmarks, for a spent quota or an outage: every answer must come from the configured
+    # model (during one outage a third of the answers came from the fallback, and it refused far more); runs resume.
+    system_llm = LLM(s.model_copy(update={"quota_fallback_model": None, "gemini_fallback_model": None}))
     # The benchmarks' gold answers come from the parsed filings, so that is the corpus unless asked otherwise.
     base = Pipeline(llm=system_llm, settings=s.model_copy(update={"sections": args.universe}))
     judge = None if args.retrieval_only else Judge(LLM(s.model_copy(update={"quota_fallback_model": None})))
@@ -312,6 +313,7 @@ def main() -> None:
             "fast": s.fast_model,
             "judge": s.judge_model,
             "corpus": "universe" if args.universe else "parsed filings",
+            "fallback": None,
         },
         "results": {},
     }

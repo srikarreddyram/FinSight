@@ -175,7 +175,8 @@ def retry_feedback(first: Answer) -> str:
 # --------------------------------------------------------------------------------------------
 
 _TAG = re.compile(r"\[\s*(S\d+(?:\s*[,;]\s*S\d+)*)\s*\]")
-_PLACEHOLDER = re.compile(r"\{(fig|calc):([A-Za-z0-9_\-.]+)\}")
+# Any name up to the closing brace: one the pattern didn't recognise would be printed as written.
+_PLACEHOLDER = re.compile(r"\{\s*(fig|calc)\s*:\s*([^{}]+?)\s*\}")
 _YEARISH = re.compile(r"^(19|20)\d{2}$")
 
 

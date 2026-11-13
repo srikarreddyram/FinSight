@@ -58,7 +58,8 @@ def build(n: int = N) -> list[dict]:
         if value is None or abs(value.value) < 1e6:
             continue
         month = calendar.month_name[f["fye_month"]]
-        when = "its latest fiscal year" if len(out) % 2 == 0 else f"the fiscal year ended {month} {value.period_end.year}"
+        # the year the fiscal year nominally ends in: one that closes on 2 January 2026 "ended December 2025"
+        when = "its latest fiscal year" if len(out) % 2 == 0 else f"the fiscal year ended {month} {f['fiscal_year']}"
         verb = "were" if item in ("assets", "current_liabilities", "cash") else "was"
         out.append(
             {

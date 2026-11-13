@@ -28,7 +28,7 @@ reranking, DuckDB, and public data from SEC EDGAR and Yahoo Finance.
 | 2. Analyst Agent | First version built | A research note on any company in about 25 seconds: bull case, bear case and what to watch from the latest 10-K, financials, news and FinSight's data; every figure filled in by Python or found in the source it cites |
 | 3. Fundamentals warehouse | Built | 45M XBRL facts, 22.7k 10-Ks split into Items, 6.7M daily prices, 758k filing-index rows, all point-in-time |
 | 4. Signal Lab | Built | 34 signals; leverage change is the one robust large-cap signal (rank IC 0.045, t = 4.1); price momentum and insider buying add nothing significant |
-| 5. Prediction engine | Built, honest null | Walk-forward LightGBM ranker: mean rank IC +0.005 (t 0.2) on test years 2015–2024, and −0.085 on the 2025 holdout; no edge in large, mid or small caps |
+| 5. Prediction engine | Built, honest null | Walk-forward LightGBM ranker: mean rank IC +0.005 (t 0.2) on test years 2015–2024, and −0.085 on the 2025 holdout; at a one-month horizon, on 120 independent months, −0.001 (t −0.1); no edge in large, mid or small caps |
 | 6. Recommendation layer and web app | Built | Ranked watchlist with SHAP drivers and risk grades; a six-screen web app |
 | 7. Risk engine | Built | Severe-loss rate rises from 7% (grade 1) to 47% (grade 5), and from 6% to 51% on the 2025 holdout; matches trailing volatility within a month |
 | 8. What's moving a stock | Built | Live moves split into market, sector and company-specific parts; cited drivers from news and 8-Ks in about 3 seconds; Movers screen and market map across the universe |
@@ -222,6 +222,24 @@ leaves the IC at +0.012 (t 0.6; `models/checks.py`). An early run that showed IC
 survive the full data. The details are in [`docs/phase-d-universe.md`](docs/phase-d-universe.md) and
 [`docs/phase-f-price-insider.md`](docs/phase-f-price-insider.md).
 
+**The same test at a one-month horizon** ([`docs/phase-j-monthly-ranker.md`](docs/phase-j-monthly-ranker.md)). A
+12-month return sampled monthly gives about ten independent observations, so the null above is a weak one. With
+next month's return as the target there are 120, and two more signal families were added (the reaction to the
+latest earnings report, and low risk). The design and the rule for a one-time out-of-sample test were committed
+before any result.
+
+| Test years 2015–2024, 120 months | Rank IC (t) | Correlation with volatility | Long-short after costs |
+|---|---|---|---|
+| LambdaRank, as above | −0.014 (−1.1) | +0.51 | +2.6% a year; 2020 alone +74% |
+| Symmetric objective | −0.001 (−0.1) | −0.18 | −2.4% a year; 2020 −3% |
+| Ridge baseline | +0.008 (0.7) | −0.11 | −0.5% a year |
+
+Still no edge: an IC above about +0.016 is ruled out at the 5% level, and the out-of-sample months were left
+unscored because the development bar wasn't met. The run also explained the backtests' one good year. LambdaRank is
+scored from the top of the ranking down, and volatile stocks reach the top return bucket more often just by moving
+more, so the model learns to rank them first; 2020 was those stocks rebounding. Fitted to each stock's return
+percentile instead, the lean and the 2020 profit both disappear.
+
 ### Risk engine (Module 7)
 
 Each company gets a monthly grade from 1 (Low) to 5 (Severe), built from two models (expected volatility, and
@@ -382,6 +400,7 @@ uv run python -m models.study                   # panel and single-signal study
 uv run python -m models.ranker && uv run python -m models.backtest
 uv run python -m risk.panel && uv run python -m risk.models
 uv run python -m models.checks                  # style-neutral ICs and survivorship gaps
+uv run python -m models.monthly build           # the one-month study (docs/phase-j-monthly-ranker.md has the rest)
 uv run python -m recs.build                     # the watchlist and the web app's data
 ```
 
@@ -478,6 +497,7 @@ Open items on the [project board](https://github.com/srikarreddyram/FinSight/iss
 | [`docs/phase-g-analyst.md`](docs/phase-g-analyst.md) | Research notes: sources, figure checks, API and app |
 | [`docs/phase-h-research-tools.md`](docs/phase-h-research-tools.md) | 10-K changes, event timeline, sourced financials, Compare, time machine |
 | [`docs/phase-i-copilot-agent.md`](docs/phase-i-copilot-agent.md) | The Copilot's retry loop: what was failing, the fixes, run E against run F, the XBRL test set |
+| [`docs/phase-j-monthly-ranker.md`](docs/phase-j-monthly-ranker.md) | The return ranker at a one-month horizon: a protocol fixed in advance, two new signal families, why LambdaRank favours volatile stocks |
 
 ---
 

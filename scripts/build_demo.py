@@ -209,7 +209,7 @@ def copilot(http: httpx.Client) -> None:
     ]
     index = {}
     for i, q in enumerate(examples):
-        r = http.post("/ask", json={"question": q, "run": "F"}, timeout=180)
+        r = http.post("/ask", json={"question": q, "run": "G"}, timeout=180)
         if r.status_code != 200:
             log.warning("answer %d: %s", i, r.status_code)
             continue

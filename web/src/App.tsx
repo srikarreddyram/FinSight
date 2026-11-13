@@ -144,7 +144,7 @@ function Workspace({ apiDown, filings, companies, pending, onPendingUsed }: { ap
     setHistory(h)
     saveHistory(h)
     try {
-      const a = await ask(q, 'F', ctrl.signal) // the full pipeline; runs A-E are for evaluation only
+      const a = await ask(q, 'G', ctrl.signal) // the full pipeline; runs A-F are for evaluation only
       setAnswer(a)
       setSelected((a.error ? a.retrieved[0] : a.refused ? a.closest[0] : a.citations[0]) ?? null)
     } catch (e) {

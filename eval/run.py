@@ -270,7 +270,7 @@ def main() -> None:
     from ingest.manifest import load_documents
 
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--runs", nargs="+", default=["F"], choices=list(RUNS))
+    ap.add_argument("--runs", nargs="+", default=["G"], choices=list(RUNS))
     ap.add_argument(
         "--sets",
         nargs="+",
@@ -304,7 +304,7 @@ def main() -> None:
     system_llm = LLM(s.model_copy(update={"quota_fallback_model": None, "gemini_fallback_model": None}))
     # The benchmarks' gold answers come from the parsed filings, so that is the corpus unless asked otherwise.
     base = Pipeline(llm=system_llm, settings=s.model_copy(update={"sections": args.universe}))
-    judge = None if args.retrieval_only else Judge(LLM(s.model_copy(update={"quota_fallback_model": None})))
+    judge = None if args.retrieval_only else Judge()
     summary: dict = {
         "config": vars(args),
         # The corpus is part of what was measured: rows from another corpus are never resumed from.
@@ -377,7 +377,8 @@ def main() -> None:
                 rows = reused + new
                 res = summarize(rows, None if args.retrieval_only else system_llm.cost_usd() - cost0)
                 res["complete"] = len(rows) == len(qs)
-                res["llm_calls"] = {m: c - calls0.get(m, 0) for m, c in system_llm.calls().items() if c - calls0.get(m, 0)}
+                # Counted from the rows, so a run resumed over several days reports all its calls, not the last day's.
+                res["llm_calls"] = {"total": sum(r.get("usage", {}).get("calls", 0) for r in rows)}
                 summary["results"][f"{run}/{set_name}"] = res
                 log.info("run %s / %s: %s", run, set_name, {k: v for k, v in res.items() if k != "failures"})
     (out_dir / "summary.json").write_text(json.dumps(summary, indent=2))

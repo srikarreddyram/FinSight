@@ -81,7 +81,7 @@ def available_years() -> dict[str, list[int]]:
 class Pipeline:
     def __init__(self, config: PipelineConfig | None = None, settings: Settings | None = None, llm: LLM | None = None):
 
-        self.cfg = config or RUNS["F"]
+        self.cfg = config or RUNS["G"]
         self.s = settings or get_settings()
         self.llm = llm or get_llm()
         self.retriever = Retriever(self.s)

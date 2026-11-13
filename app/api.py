@@ -59,7 +59,7 @@ _ingest_lock = threading.Lock()
 
 class AskRequest(BaseModel):
     question: str
-    run: Literal["A", "B", "C", "D", "E", "F"] = "F"
+    run: Literal["A", "B", "C", "D", "E", "F", "G"] = "G"
 
 
 @app.get("/health")
@@ -75,7 +75,7 @@ def ask(req: AskRequest) -> Answer:
     from app.llm import QuotaExhausted
 
     pipe = get_pipeline()
-    if req.run != "F":
+    if req.run != "G":
         pipe = pipe.with_config(RUNS[req.run])
     try:
         return pipe.ask(q)

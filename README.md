@@ -24,7 +24,7 @@ reranking, DuckDB, and public data from SEC EDGAR and Yahoo Finance.
 
 | Module | State | Headline result |
 |---|---|---|
-| 1. Research Copilot | Built, evaluated | FinanceBench: 80% answer accuracy on graded questions (66% before the retry loop, same judge), 99.5% citation precision, 30/30 correct refusals; 96/98 on lookups checked against XBRL |
+| 1. Research Copilot | Built, evaluated | Answers about ~1,600 companies from their filings and XBRL facts. FinanceBench: 84% of graded answers correct, 83% numeric match, 99.5% citation precision, 9.6 s median; 30/30 correct refusals |
 | 2. Analyst Agent | First version built | A research note on any company in about 25 seconds: bull case, bear case and what to watch from the latest 10-K, financials, news and FinSight's data; every figure filled in by Python or found in the source it cites |
 | 3. Fundamentals warehouse | Built | 45M XBRL facts, 22.7k 10-Ks split into Items, 6.7M daily prices, 758k filing-index rows, all point-in-time |
 | 4. Signal Lab | Built | 34 signals; leverage change is the one robust large-cap signal (rank IC 0.045, t = 4.1); price momentum and insider buying add nothing significant |
@@ -53,27 +53,33 @@ give every number with its baseline.
 
 ## The Copilot
 
-Ask a question about a company's 10-K, 10-Q, 20-F or earnings call. The answer is either correct and cited to a
-page you can open, or an honest **"Not found in the filings."** The language model never types a number from a
-source and never does arithmetic: it names the figures and calculations it needs, and Python checks each figure
-against its cited page and computes the result.
+Ask a question about a company's filings. The answer is either correct and cited to a source you can open, or
+an honest **"Not found in the filings."** The language model never types a number from a source and never does
+arithmetic: it names the figures and calculations it needs, and Python checks each figure against its cited
+source and computes the result.
+
+It covers about 1,600 companies. For 32 it has parsed filings (10-Ks, 10-Qs, earnings calls) with pages and
+tables. For every other company still filing it has the latest 10-K's text from the warehouse, and for all of
+them the standard financials from XBRL, as each 10-K reported them.
 
 ### How an answer is built
 
 ```
 question
-  └─ query parser ── companies by name, fiscal years ("last year" resolved per company), section hints
-       └─ hybrid search ── BM25 (Qdrant sparse) + bge-base dense, filtered, fused with RRF → top 30
-            └─ bge-reranker-base cross-encoder → top 10   (tables fed as linearized rows)
-                 └─ evidence gate ── nothing relevant at all? → "Not found in the filings" + closest passages
-                      └─ LLM (structured output): figures + quotes, calculation names, prose with
-                         {fig:x}/{calc:y} placeholders and [S#] citations, or the facts it couldn't find
-                           └─ Python: verify each figure is printed in its source, compute growth /
-                              margins / CAGR, fill placeholders, strip any sentence that is uncited,
-                              cites a missing source, or contains a number its source doesn't have
-                                └─ no answer? one retry: search for each missing fact and 50 deep for the
-                                   question, then ask again with what went wrong; same checks
-                                     └─ answer with [Company FY p.N] citations → source viewer
+  └─ query parser ── companies by name (conservatively: "Target", not a "target margin"), fiscal years,
+     │               section hints; no company named → "Which company is this about?"
+     ├─ hybrid search ── BM25 (Qdrant sparse) + bge-base dense, filtered, fused with RRF → top 30
+     │    └─ bge-reranker-base cross-encoder → top 10   (tables fed as linearized rows)
+     └─ facts ── the company's standard financials from XBRL, as that year's 10-K reported them
+          └─ evidence gate ── nothing relevant at all? → "Not found in the filings" + closest passages
+               └─ LLM (structured output): figures + quotes, calculation names, prose with
+                  {fig:x}/{calc:y} placeholders and [S#] citations, or the facts it couldn't find
+                    └─ Python: verify each figure is printed in its source, compute growth /
+                       margins / CAGR, fill placeholders, strip any sentence that is uncited,
+                       cites a missing source, or contains a number its source doesn't have
+                         └─ no answer? one retry: search for each missing fact and 50 deep for the
+                            question, then ask again with what went wrong; same checks
+                              └─ answer cited to a page, a 10-K item or the XBRL table → source viewer
 ```
 
 Comparison questions ("Compare Nike's and PepsiCo's gross margin…") fan out into one search per company, and
@@ -91,31 +97,43 @@ Flash-Lite; graded by Gemma 4 26B, a separate model, so the answering model neve
 | C | Docling | Hybrid (BM25 + dense) | No | No | No | 50% |
 | D | Docling | Hybrid | Yes | No | No | 59% |
 | E | Docling | Hybrid | Yes | Yes | No | 81% |
-| **F: full system** | Docling | Hybrid | Yes | Yes | Yes | **84%** |
+| F | Docling | Hybrid | Yes | Yes | Yes | 84% |
+| **G: full system** (F + XBRL facts) | Docling | Hybrid | Yes | Yes | Yes | **83%** |
 
-Run E against the full system, graded by the same judge (run E's answers were re-graded after a judge fix):
+The last three runs, graded by the same judge:
 
-| Metric | Run E | Run F | Target |
-|---|---|---|---|
-| Answer accuracy, graded answers | 93 of 141 (66.0%) | **118 of 147 (80.3%)** | ≥ 60% |
-| Accuracy, ungraded counted wrong | 62.0% | **78.7%** | |
-| Numeric match (within 1%) | 59% | **78%** | ≥ 80% |
-| Citation precision | 98.7% | **99.5%** | ≥ 90% |
-| All gold evidence read | 69% | **79%** | |
-| Answerable questions refused | 30 | **6** | |
-| Correct refusals on unanswerable questions | 15/15 | **30/30** | ≥ 80% |
-| Median latency | 13 s | 12 s (31 s when it retries) | < 10 s |
-| Cost | Free tier, 284 LLM calls | Free tier, 171 LLM calls | |
+| Metric | Run E | Run F: + retry | Run G: + facts | Target |
+|---|---|---|---|---|
+| Answer accuracy, graded answers | 93 of 141 (66.0%) | 118 of 147 (80.3%) | **116 of 138 (84.1%)** | ≥ 60% |
+| Accuracy, ungraded counted wrong | 62.0% | 78.7% | 77.3% | |
+| Numeric match (within 1%) | 59% | 78% | **83%** | ≥ 80% |
+| Citation precision | 98.7% | 99.5% | 99.5% | ≥ 90% |
+| Answerable questions refused | 30 | 6 | 6 | |
+| Correct refusals on unanswerable questions | 15/15 | 30/30 | **30/30** | ≥ 80% |
+| Median latency | 13 s | 12 s | **9.6 s** | < 10 s |
+| LLM calls for the run | 284 | 171 | 160 | |
 
-Of the 138 questions graded in both runs, 26 went from wrong to right and 5 from right to wrong. FinanceBench
-was studied closely while making these changes, so a second set checks the system on questions it was never
-tuned on: 98 lookups whose answers come from each filing's XBRL data, graded by numeric match with no judge
-([`eval/xbrl_set.py`](eval/xbrl_set.py)). 96 are correct.
+- **E to F** ([`docs/phase-i-copilot-agent.md`](docs/phase-i-copilot-agent.md)): of 138 questions graded in both,
+  26 went from wrong to right and 5 the other way.
+- **F to G** ([`docs/phase-k-copilot-universe.md`](docs/phase-k-copilot-universe.md)): of 137 graded in both, 8
+  went from wrong to right and 4 the other way. Numeric match and latency clear their targets for the first time.
+  The judge's server failed on 12 of run G's answers through repeated retries; read by hand, 7 of them are right,
+  which would put run G near 82% of all 150. Three of run G's six refusals are "Which company?" for questions
+  that name none, two of which run F had answered by searching every filing.
+- **Recall@10 fell a point** because those three questions are no longer searched at all.
 
-Of the 32 FinanceBench questions still missed, 16 are wrong with the evidence in hand (verdicts the gold
-disagrees with, formula or line-item choices), 7 are retrieval misses, 6 are refusals after the retry and 3
-went ungraded. Card [#23](https://github.com/srikarreddyram/FinSight/issues/23) tracks them; the analysis is in
-[`docs/phase-i-copilot-agent.md`](docs/phase-i-copilot-agent.md).
+FinanceBench was studied closely while making these changes, so two more sets check the system on questions it
+was never tuned on, both graded by numeric match with no judge:
+
+| Set | Result |
+|---|---|
+| 98 lookups on the parsed filings, answers from XBRL ([`eval/xbrl_set.py`](eval/xbrl_set.py); run F, before it could read XBRL) | 96 correct |
+| 40 lookups about companies outside the parsed filings ([`eval/universe_set.py`](eval/universe_set.py); run G) | 39 of 39 scored |
+
+The second set's answers come from the same XBRL data the Copilot reads, so it tests finding the company, the
+year and the line item among 1,600 companies, not the data itself.
+
+Card [#23](https://github.com/srikarreddyram/FinSight/issues/23) tracks the questions still missed.
 
 ### Design notes
 
@@ -142,6 +160,14 @@ went ungraded. Card [#23](https://github.com/srikarreddyram/FinSight/issues/23) 
 - **The query parser's LLM call only runs when no company is named.** The regex pass retrieved as well for no
   call, and the LLM had filtered two company-less questions to Adobe; now it must quote the words that name the
   company, and Python checks they are in the question.
+- **Numbers come from XBRL when they can.** A table of the company's standard line items, read from the
+  warehouse as of the day after the 10-K was filed, sits beside the passages. A ratio that needed two statements
+  on two pages needs neither.
+- **Which words can name a company is measured, not listed.** Of 400 sampled 10-Ks, 294 write "target" in lower
+  case and none writes "nvidia"; 155 write "IT" in capitals and 3 "IBM". One-word names need a capital, and a
+  ticker that filings use as a word or acronym needs a dollar sign.
+- **The checks verify numbers, not the words around them.** Asked to compare two margins, the model once wrote the
+  right figures and the wrong "slightly higher"; that sentence was removed only because it was uncited.
 - **EDGAR filings become PDFs.** Filings are HTML without pages, so headless Chrome prints them using their own
   page-break CSS, and page numbers match the filing's pagination.
 
@@ -377,7 +403,7 @@ uv run python -m ingest.parse --all             # Docling, ~2 min per 10-K, cach
 uv run python -m ingest.index --all             # embeddings + BM25 into Qdrant (embedded on disk)
 
 uv run python -m ingest.fetch_edgar AAPL MSFT NVDA --years 3     # more filings from EDGAR
-uv run python -m eval.run --runs F --sets financebench unanswerable xbrl && uv run python -m eval.report
+uv run python -m eval.run --runs G --sets financebench unanswerable && uv run python -m eval.report
 ```
 
 Every company in the universe, not only the indexed filings, once the warehouse is built (see Research platform
@@ -389,6 +415,7 @@ docker compose up -d qdrant
 uv run python -m ingest.move_index              # copy the FinanceBench index to the server, nothing re-embedded
 export FINSIGHT_QDRANT_URL=http://localhost:6333  # or set it in .env
 uv run python -m ingest.sections                # Items 1, 1A, 3, 7, 7A and 9A of each latest 10-K, about an hour
+uv run python -m eval.run --runs G --sets universe --universe   # questions about companies outside the parsed filings
 ```
 
 ### Research platform
@@ -433,7 +460,7 @@ cd web && npm install && npm run dev            # app on http://localhost:5173
 
 | Area | Tools |
 |---|---|
-| Language models | Gemini 3.5 Flash-Lite (answers) and Gemma 4 26B (evaluation judge; query parsing when no company is named) on the free tier, throttled per model; Ollama for unlimited local runs; Anthropic optional |
+| Language models | Gemini 3.5 Flash-Lite (answers), Gemma 4 26B (evaluation judge) and Gemma 4 31B (query parsing when no company is named) on the free tier, throttled per model; Ollama for unlimited local runs; Anthropic optional |
 | Retrieval | Docling (tables), fastembed (bge-base, BM25, bge-reranker-base on ONNX), Qdrant |
 | Data | SEC EDGAR (submissions, XBRL company facts, filings), Yahoo Finance, Google News RSS, Wikipedia index change logs |
 | Storage and modelling | DuckDB, pandas, pyarrow, LightGBM |
@@ -462,7 +489,7 @@ data/       manifests only; filings, the warehouse and model outputs are generat
 
 ## Testing and CI
 
-247 Python tests cover parsing on real filing tables, fiscal-year logic, numeric verification, the Copilot's retry, point-in-time
+274 Python tests cover parsing on real filing tables, fiscal-year logic, numeric verification, the Copilot's retry, point-in-time
 and leakage guarantees (every one checked by breaking it on purpose), index membership reconstruction, signals
 with hand-computed values, walk-forward purging, the backtest arithmetic, risk grades, the recommendation API,
 the move breakdown and its cited drivers, and the research notes' figure and citation checks.
@@ -477,7 +504,7 @@ cd web && npm run lint && npm run build
 
 Open items on the [project board](https://github.com/srikarreddyram/FinSight/issues):
 
-- Copilot accuracy: verdict questions, formula choices, January fiscal-year names; latency (12 s median, 31 s with a retry)
+- Copilot accuracy: verdict questions, formula choices, January fiscal-year names; checking direction words ("higher", "fell") against the computed figures
 - Analyst Agent, second half: open-ended questions answered by a planner that sends sub-questions through the
   Copilot; notes that also read 10-Qs and earnings calls
 - Price history for delisted and acquired companies, to close the survivorship gap
@@ -503,6 +530,7 @@ Open items on the [project board](https://github.com/srikarreddyram/FinSight/iss
 | [`docs/phase-g-analyst.md`](docs/phase-g-analyst.md) | Research notes: sources, figure checks, API and app |
 | [`docs/phase-h-research-tools.md`](docs/phase-h-research-tools.md) | 10-K changes, event timeline, sourced financials, Compare, time machine |
 | [`docs/phase-i-copilot-agent.md`](docs/phase-i-copilot-agent.md) | The Copilot's retry loop: what was failing, the fixes, run E against run F, the XBRL test set |
+| [`docs/phase-k-copilot-universe.md`](docs/phase-k-copilot-universe.md) | The Copilot on the warehouse: XBRL facts as a source, every company's latest 10-K, matching 1,600 company names, run F against run G |
 | [`docs/phase-j-monthly-ranker.md`](docs/phase-j-monthly-ranker.md) | The return ranker at a one-month horizon: a protocol fixed in advance, two new signal families, why LambdaRank favours volatile stocks |
 
 ---

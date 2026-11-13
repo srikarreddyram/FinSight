@@ -28,7 +28,7 @@ reranking, DuckDB, and public data from SEC EDGAR and Yahoo Finance.
 | 2. Analyst Agent | First version built | A research note on any company in about 25 seconds: bull case, bear case and what to watch from the latest 10-K, financials, news and FinSight's data; every figure filled in by Python or found in the source it cites |
 | 3. Fundamentals warehouse | Built | 45M XBRL facts, 22.7k 10-Ks split into Items, 6.7M daily prices, 758k filing-index rows, all point-in-time |
 | 4. Signal Lab | Built | 34 signals; leverage change is the one robust large-cap signal (rank IC 0.045, t = 4.1); price momentum and insider buying add nothing significant |
-| 5. Prediction engine | Built, honest null | Walk-forward LightGBM ranker: mean rank IC +0.005 (t 0.2) on test years 2015–2024, and −0.085 on the 2025 holdout; at a one-month horizon, on 120 independent months, −0.001 (t −0.1); no edge in large, mid or small caps |
+| 5. Prediction engine | Built, honest null | Walk-forward LightGBM ranker: mean rank IC +0.005 (t 0.4) on test years 2015–2024; at a one-month horizon, on 120 independent months, −0.001 (t −0.1); no edge in large, mid or small caps. The first design's +4.5% a year backtest traced to an objective that favoured volatile stocks |
 | 6. Recommendation layer and web app | Built | Ranked watchlist with SHAP drivers and risk grades; a six-screen web app |
 | 7. Risk engine | Built | Severe-loss rate rises from 7% (grade 1) to 47% (grade 5), and from 6% to 51% on the 2025 holdout; matches trailing volatility within a month |
 | 8. What's moving a stock | Built | Live moves split into market, sector and company-specific parts; cited drivers from news and 8-Ks in about 3 seconds; Movers screen and market map across the universe |
@@ -205,21 +205,22 @@ these are patterns to test on new data rather than findings.
 - **Panel:** 194,357 stock-months; audited so that no row uses information dated after its month (0 of 194,051).
 - **Validation:** expanding-window walk-forward, one test year per fold (2015–2024), training rows purged where
   their 12-month label overlaps the test year, and all tuning nested inside each fold's training window. 2025 is
-  held out for one final run.
-- **Ranker:** LightGBM LambdaRank on the signals' monthly ranks, against four baselines (the best single signal,
-  ridge regression, F-score alone, random ranks).
+  the first design's holdout, used once.
+- **Ranker:** LightGBM on the signals' monthly ranks, fitted to each stock's return percentile within the month,
+  against four baselines (the best single signal, ridge regression, F-score alone, random ranks).
 - **Backtest:** long the top tenth, short the bottom tenth, monthly, equal-weight, 10 bps per trade.
 
 | | All three indexes | Inside S&P 500 | Inside S&P 400 | Inside S&P 600 |
 |---|---|---|---|---|
-| Ranker mean rank IC | +0.005 (t 0.2) | +0.018 | +0.011 | −0.002 |
-| Long-short return after costs | +4.5% a year (Sharpe 0.42) | +1.7% | +7.0% | +8.8% |
+| Ranker mean rank IC | +0.005 (t 0.4) | −0.011 | +0.000 | +0.005 |
+| Long-short return after costs | −4.8% a year (Sharpe −0.36) | −3.0% | −6.4% | −3.2% |
 
-**There is no edge.** The 2025 holdout, scored once at the end, before the price and insider signals were added,
-confirms it (ranker IC −0.085; [`docs/holdout-2025.md`](docs/holdout-2025.md)). The whole backtest gain comes from
-2020 (+59%); the other nine years compound to −0.3% a year. Removing exposure to size, volatility, momentum and beta
-leaves the IC at +0.012 (t 0.6; `models/checks.py`). An early run that showed IC 0.058 inside the S&P 400 did not
-survive the full data. The details are in [`docs/phase-d-universe.md`](docs/phase-d-universe.md) and
+**There is no edge**, and no profitable backtest either. The first design used a ranking objective (LambdaRank)
+and reported the same IC with a long-short return of +4.5% a year, all of it from 2020. That objective turned out
+to favour volatile stocks (see below); 2020 was those stocks rebounding. The first design's 2025 holdout, scored
+once, had already confirmed the null (ranker IC −0.085; [`docs/holdout-2025.md`](docs/holdout-2025.md)). An early
+run that showed IC 0.058 inside the S&P 400 did not survive the full data. The first design is written up in
+[`docs/phase-d-universe.md`](docs/phase-d-universe.md) and
 [`docs/phase-f-price-insider.md`](docs/phase-f-price-insider.md).
 
 **The same test at a one-month horizon** ([`docs/phase-j-monthly-ranker.md`](docs/phase-j-monthly-ranker.md)). A
@@ -230,7 +231,7 @@ before any result.
 
 | Test years 2015–2024, 120 months | Rank IC (t) | Correlation with volatility | Long-short after costs |
 |---|---|---|---|
-| LambdaRank, as above | −0.014 (−1.1) | +0.51 | +2.6% a year; 2020 alone +74% |
+| LambdaRank (the first design) | −0.014 (−1.1) | +0.51 | +2.6% a year; 2020 alone +74% |
 | Symmetric objective | −0.001 (−0.1) | −0.18 | −2.4% a year; 2020 −3% |
 | Ridge baseline | +0.008 (0.7) | −0.11 | −0.5% a year |
 
@@ -239,6 +240,11 @@ unscored because the development bar wasn't met. The run also explained the back
 scored from the top of the ranking down, and volatile stocks reach the top return bucket more often just by moving
 more, so the model learns to rank them first; 2020 was those stocks rebounding. Fitted to each stock's return
 percentile instead, the lean and the 2020 profit both disappear.
+
+The 12-month ranker behind the watchlist had the same lean (+0.24), and was refitted the same way. Its IC is
+unchanged, but a stock in its top tenth used to be half again as likely as the average stock to fall 40% or more
+within a year (31.8% against 21.6%); now it is about as likely as any (22.9%). Of the watchlist's current top 50
+names, 26 carried a Severe risk grade before and 10 do now.
 
 ### Risk engine (Module 7)
 

@@ -141,12 +141,35 @@ Test years 2015–2024, 120 months, about 118,800 stock-months (`monthly.json`, 
 - **Turnover is the other half.** A monthly signal turns the whole book over about twice a month. At 10 bps a
   trade that costs 2.3 points a year, more than any gross return here.
 
-### What this means for the 12-month ranker
+### The 12-month ranker, refitted
 
-The watchlist's ranker uses the same LambdaRank objective and shows the same lean (+0.24), which is why its top
-names are often loss-makers with Severe risk grades ([phase-d-universe.md](phase-d-universe.md)). Refitting it
-with the symmetric objective would remove that. It is not done here: it changes every 12-month figure already
-reported, and the 2025 holdout for that design has been used.
+The watchlist's ranker used the same LambdaRank objective and showed the same lean. It was refitted with the
+symmetric objective on the same walk-forward (test years 2015–2024), and the watchlist now uses it
+(`models/ranker.py`, `OBJECTIVE`; `--objective lambdarank` still runs the first design):
+
+| 12-month ranker, test years 2015–2024 | LambdaRank (before) | Symmetric objective (now) |
+|---|---|---|
+| Mean rank IC (t on yearly means) | +0.005 (0.2) | +0.005 (0.4) |
+| after removing size, volatility, momentum, beta | +0.012 (0.6) | +0.002 (0.1) |
+| inside S&P 500 / 400 / 600 | +0.018 / +0.011 / −0.002 | −0.011 / +0.000 / +0.005 |
+| Rank correlation of scores with past-year volatility | +0.24 | −0.08 |
+| Top tenth: median past-year volatility (all stocks 31%) | 37% | 32% |
+| Top tenth: fell 40% or more within a year (all stocks 21.6%) | 31.8% | 22.9% |
+| Long-short deciles, after 10 bps | +4.5% a year (Sharpe 0.42) | −4.8% a year (Sharpe −0.36) |
+| of which 2020 | +59% | −23% |
+
+- **Predictive power is unchanged: none.** The IC is +0.005 either way.
+- **The top of the ranking is no longer a list of likely crashes.** Under LambdaRank, a stock in the top tenth was
+  half again as likely as the average stock to lose 40% or more within a year. Now it is about as likely as any.
+  On the watchlist of September 2026, 26 of the top 50 names had a Severe risk grade before; 10 do now.
+- **Inside each index the backtest loses too:** −3.0% a year in the S&P 500, −6.4% in the 400, −3.2% in the 600.
+- **The backtest's profit is gone, and it was never an edge.** The +4.5% a year came from 2020, when the volatile
+  stocks the model favoured rebounded. Without that lean the long-short portfolio loses 4.8% a year after costs.
+  The earlier write-ups ([phase-d-universe.md](phase-d-universe.md),
+  [phase-f-price-insider.md](phase-f-price-insider.md), [holdout-2025.md](holdout-2025.md)) describe the first
+  design and are left as they were written.
+- **Not re-scored: 2025.** That year was the first design's holdout and has been used. The refitted ranker's
+  development results are the ones above; it has no clean out-of-sample test at 12 months.
 
 ### What the protocol got wrong
 

@@ -1,10 +1,16 @@
-"""Return ranker (platform PRD, Module 5): LightGBM LambdaRank on the monthly signal ranks, walk-forward.
+"""Return ranker (platform PRD, Module 5): LightGBM on the monthly signal ranks, walk-forward.
 
     uv run python -m models.ranker                    # on the study panel (build it with models.study)
     uv run python -m models.ranker --first-test-year 2015
 
-Each month is one ranking query; the label is the stock's quintile of 12-month excess return, within the month
-or within its sector that month. Every fold chooses its whole configuration inside its own training window: tree
+The label is the stock's percentile of excess return within the month, or within its sector that month, fitted
+with a squared-error objective. The first design used LambdaRank on return quintiles (`--objective lambdarank`
+still runs it). That objective is scored from the top of each month's ranking down, and a volatile stock reaches
+the top quintile more often just by moving more, so the model learned to rank volatile stocks first: its scores
+correlated +0.24 with past-year volatility, and 32% of its top tenth fell 40% or more within a year against 22%
+of all stocks (docs/phase-j-monthly-ranker.md). The percentile label treats both ends of the ranking alike.
+
+Every fold chooses its whole configuration inside its own training window: tree
 settings, how many signals to keep (the top 5 or 10 by rank IC on the training rows, or all), and which label.
 The last VAL_YEARS of training months are the validation set, and inner-training rows whose label window
 reaches the validation period are purged, exactly as the outer folds purge against the test year; feature
@@ -36,7 +42,6 @@ LABELS = 5  # within-month quintiles
 VAL_YEARS = 2
 MIN_INNER_MONTHS = 24
 BASE = {
-    "objective": "lambdarank",
     "subsample": 0.8,
     "subsample_freq": 1,
     "colsample_bytree": 0.8,
@@ -51,6 +56,7 @@ GRID = [
 ]
 TOP_K = (5, 10, None)  # None = every signal
 TARGETS = ("market", "sector")
+OBJECTIVE = "regression"  # on the within-month return percentile; "lambdarank" is the first design
 
 
 @dataclass(frozen=True)
@@ -111,8 +117,8 @@ def select(df: pd.DataFrame, features: list[str], k: int | None) -> list[str]:
     return list(feature_ics(df, features).abs().sort_values(ascending=False).index[:k])
 
 
-def _fit_lgbm(train: pd.DataFrame, features: list[str], params: dict, by: str = "market", objective: str = "lambdarank"):
-    """objective: "lambdarank" on within-month quintiles, or "regression" on the within-month percentile."""
+def _fit_lgbm(train: pd.DataFrame, features: list[str], params: dict, by: str = "market", objective: str = OBJECTIVE):
+    """objective: "regression" on the within-month percentile, or "lambdarank" on within-month quintiles."""
     import lightgbm as lgb
 
     train = train.sort_values("month")
@@ -129,7 +135,7 @@ def _ic(df: pd.DataFrame, pred: np.ndarray) -> float:
     return float(rank_ic_by_month(df.assign(pred=pred), "pred", "excess_ret").mean())
 
 
-def tune(train: pd.DataFrame, features: list[str], objective: str = "lambdarank") -> tuple[Config, float | None]:
+def tune(train: pd.DataFrame, features: list[str], objective: str = OBJECTIVE) -> tuple[Config, float | None]:
     """Pick the configuration by validation IC on the last VAL_YEARS of the training window, purged."""
     val_start = date(max(m.year for m in train["month"]) - VAL_YEARS + 1, 1, 1)
     inner = train[train["target_end"] < val_start]
@@ -159,7 +165,7 @@ def walk_forward(
     first_test_year: int,
     seed: int = 0,
     last_test_year: int | None = None,
-    objective: str = "lambdarank",
+    objective: str = OBJECTIVE,
 ) -> tuple[pd.DataFrame, list[FoldReport]]:
     """Out-of-sample predictions for every test year, plus what each fold trained on and chose."""
     rng = np.random.default_rng(seed)
@@ -214,8 +220,8 @@ def main() -> None:
     ap.add_argument("--out", type=Path, help="where to write the predictions (default: predictions.parquet beside the panel)")
     ap.add_argument("--without", nargs="*", default=[], help="signals to leave out, by name (for ablations)")
     ap.add_argument(
-        "--objective", choices=["lambdarank", "regression"], default="lambdarank",
-        help="regression fits the within-month return percentile, which doesn't reward volatility (phase J)",
+        "--objective", choices=["regression", "lambdarank"], default=OBJECTIVE,
+        help="lambdarank is the first design, which favours volatile stocks (docs/phase-j-monthly-ranker.md)",
     )  # fmt: skip
     args = ap.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")

@@ -40,16 +40,19 @@ class Settings(BaseSettings):
     # free tier (per AI Studio, Sep 2026): Flash models allow only 20 requests/day, Flash-Lite 500/day,
     # Gemma 4 14,400/day but 16K tokens/minute. Gemini 2.5 models are closed to new keys.
     answer_model: str = "gemini:gemini-3.5-flash-lite"
-    fast_model: str = "gemini:gemma-4-26b-a4b-it"  # query parsing (high daily quota)
+    # Query parsing. Not the judge's model: each has its own 16K tokens a minute, and sharing one starved both.
+    fast_model: str = "gemini:gemma-4-31b-it"
     judge_model: str = "gemini:gemma-4-26b-a4b-it"  # eval grading: a different model family from the answerer
     # One-off table summaries at index time: ~240 large batched calls for the FinanceBench corpus. Flash-Lite's
     # 250K tokens/minute finishes in ~20 minutes; Gemma's 16K/minute would take ~4 hours (but costs no Flash-Lite quota).
     summary_model: str = "gemini:gemini-3.5-flash-lite"
     summary_batch_tokens: int = 12_000
-    gemini_fallback_model: str | None = "gemma-4-26b-a4b-it"  # used when a model keeps returning 503s
+    # Used when a model keeps returning 503s. The older Flash-Lite has its own quota. Gemma, the first choice
+    # here, refused far more questions than the answer model; the older Flash-Lite's answers are not yet measured.
+    gemini_fallback_model: str | None = "gemini-3.1-flash-lite"
     # When a model's daily free-tier quota is spent, the live app switches to this one instead of failing.
     # The eval harness disables it so a benchmark run always uses a single answer model.
-    quota_fallback_model: str | None = "gemini:gemma-4-26b-a4b-it"
+    quota_fallback_model: str | None = "gemini:gemini-3.1-flash-lite"
     # Route every role to one model, e.g. "ollama:llama3.1:8b" for unlimited local dev runs.
     model_override: str | None = None
     # Free-tier limits per model: requests/minute and input tokens/minute.

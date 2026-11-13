@@ -3,6 +3,7 @@ page supports what the answer attributes to it. (One call instead of two halves 
 
 from __future__ import annotations
 
+from app.config import get_settings
 from app.llm import LLM
 
 SYSTEM = """You grade answers from a financial-filings QA system. Be strict.
@@ -44,7 +45,9 @@ MAX_PAGES = 4
 
 class Judge:
     def __init__(self, llm: LLM | None = None):
-        self.llm = llm or LLM()  # separate instance so judge calls aren't counted against the system under test
+        # A separate instance, so judge calls aren't counted against the system under test, and no fallback
+        # model: every answer is graded by the same judge or left ungraded.
+        self.llm = llm or LLM(get_settings().model_copy(update={"quota_fallback_model": None, "gemini_fallback_model": None}))
 
     def grade(self, question: str, gold: str, candidate: str, pages: dict[str, str]) -> tuple[bool, str, dict[str, bool]]:
         """pages: citation label -> full text of that page. Returns (correct, reason, {label: supported})."""

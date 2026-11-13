@@ -107,6 +107,18 @@ class RateLimiter:
             time.sleep(max(pause, 0.05))
 
 
+_LIMITER: RateLimiter | None = None
+
+
+def shared_limiter(s: Settings) -> RateLimiter:
+    """One limiter for the whole process. The limits are per project, not per client: with a limiter each, the
+    eval's judge and its system under test both spent Gemma's 16K tokens a minute, and the dashboard showed 21K."""
+    global _LIMITER
+    if _LIMITER is None:
+        _LIMITER = RateLimiter(s.llm_rpm, s.llm_tpm)
+    return _LIMITER
+
+
 def estimate_tokens(*texts: str) -> int:
     return sum(len(t) for t in texts) // 4 + 50
 
@@ -117,7 +129,7 @@ class LLM:
         self._clients: dict[str, object] = {}
         self._lock = threading.Lock()
         self._local = threading.local()
-        self.limiter = RateLimiter(self.s.llm_rpm, self.s.llm_tpm)
+        self.limiter = shared_limiter(self.s)
         self._spent: set[str] = set()  # model specs whose daily quota ran out in this process
         self.usage: dict[str, dict[str, int]] = defaultdict(lambda: {"input_tokens": 0, "output_tokens": 0, "calls": 0})
 
